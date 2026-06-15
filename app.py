@@ -119,3 +119,13 @@ def notify_test():
 @app.route("/callback", methods=["POST"])
 def callback():
     return "OK"
+
+
+
+@app.route("/notify", methods=["GET"])
+def notify():
+    user_id = request.args.get("user")
+
+    send_line_message(user_id, "✅ 修理が完了しました！ご確認ください。")
+
+    return "通知送信OK"
