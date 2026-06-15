@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, send_from_directory
 import requests
 import os
 
@@ -13,53 +13,56 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-# ===== 動作確認用 =====
+# ===== 動作確認 =====
 @app.route("/", methods=["GET"])
 def home():
     return "OK"
 
 
-# ===== LINE Webhook受信 =====
-@app.route("/callback", methods=["POST"])
-def callback():
+# ===== フォーム表示 =====
+@app.route("/form", methods=["GET"])
+def form():
+    return send_from_directory(".", "form.html")
+
+
+# ===== フォーム送信処理 =====
+@app.route("/submit", methods=["POST"])
+def submit():
     data = request.json
 
-    # ✅ 先に即レスポンス（超重要：タイムアウト防止）
-    response = "OK"
-
     try:
-        events = data.get("events", [])
+        print("受信データ:", data)
 
-        for event in events:
-            if event["type"] == "message":
+        name = data.get("name", "")
+        phone = data.get("phone", "")
+        maker = data.get("maker", "")
+        model = data.get("model", "")
+        issue = data.get("issue", "")
 
-                # ユーザーID
-                user_id = event["source"]["userId"]
+        # ✅ Kintone登録
+        record = {
+            "app": 5,
+            "record": {
+                "customer_name": {"value": name},
+                "phone": {"value": phone},
+                "maker": {"value": maker},
+                "model": {"value": model},
+                "issue": {"value": issue}
+            }
+        }
 
-                # テキスト
-                text = event["message"].get("text", "")
+        res = requests.post(KINTONE_URL, headers=HEADERS, json=record)
 
-                print("受信:", text)
+        print("Kintone結果:", res.text)
 
-                # ✅ Kintone登録
-                record = {
-                    "app": 5,
-                    "record": {
-                        "customer_name": {"value": text},
-                        "line_user_id": {"value": user_id}
-                    }
-                }
-
-                res = requests.post(
-                    KINTONE_URL,
-                    headers=HEADERS,
-                    json=record,
-                    timeout=5  # ← 念のため
-                )
-
-                print("Kintone:", res.text)
+        return {"status": "ok"}
 
     except Exception as e:
         print("エラー:", e)
+        return {"status": "error"}
 
-    return response
+    
+# ===== LINE Webhook（将来用）=====
+@app.route("/callback", methods=["POST"])
+def callback():
+    return "OK"
