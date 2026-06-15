@@ -108,7 +108,7 @@ def submit():
 # ===== テスト通知用 =====
 @app.route("/notify_test", methods=["GET"])
 def notify_test():
-    user_id = "ここにあなたのLINEユーザーID"
+    user_id = "Ue90610c9001350129a502f1a7eda69da"
 
     send_line_message(user_id, "✅ テスト通知成功！")
 
