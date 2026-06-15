@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>修理受付フォーム</title>
 
-<!-- ✅ ✅ ✅ LIFF SDK（これ絶対必要） -->
+<!-- ✅ LIFF SDK（絶対必要） -->
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
 <style>
@@ -13,20 +13,17 @@ body {
   background: #f7f7f7;
   padding: 20px;
 }
-
 .container {
   background: white;
   padding: 20px;
   border-radius: 10px;
 }
-
 input, textarea {
   width: 100%;
   padding: 10px;
   margin-top: 5px;
   margin-bottom: 15px;
 }
-
 button {
   background: #06c755;
   color: white;
@@ -73,7 +70,7 @@ button {
 <script>
 let userId = "";
 
-// ✅ ページ読み込み時
+// ✅ LIFF初期化
 window.onload = async function () {
   try {
     await liff.init({ liffId: "2009322369-Om7WRQAU" });
@@ -86,45 +83,34 @@ window.onload = async function () {
     const profile = await liff.getProfile();
     userId = profile.userId;
 
-    // ✅ ✅ ✅ ここで確認（出れば成功）
-    alert("取得したuserId: " + userId);
-
-    console.log("LINE userId:", userId);
+    console.log("取得userId:", userId);
 
   } catch (err) {
-    alert("LIFFエラー: " + err);
-    console.error(err);
+    alert("LIFFエラー：" + err);
   }
 };
 
-
-// ✅ フォーム送信
+// ✅ 送信処理
 document.getElementById("form").onsubmit = async function(e) {
   e.preventDefault();
 
   const data = Object.fromEntries(new FormData(this));
 
-  // ✅ userId追加
+  // ✅ ここが超重要（今回のゴール）
   data.line_user_id = userId;
 
   console.log("送信データ:", data);
 
-  try {
-    await fetch("/submit", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(data)
-    });
+  await fetch("/submit", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(data)
+  });
 
-    document.getElementById("msg").innerHTML =
-      "<p style='color:green;'>✅ 受付完了しました！</p>";
+  document.getElementById("msg").innerHTML =
+    "<p style='color:green;'>✅ 受付完了しました！</p>";
 
-    document.getElementById("form").reset();
-
-  } catch (err) {
-    document.getElementById("msg").innerHTML =
-      "<p style='color:red;'>送信エラー</p>";
-  }
+  this.reset();
 };
 </script>
 
