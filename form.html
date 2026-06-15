@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>修理受付フォーム</title>
 
-<!-- ✅ ✅ ✅ 絶対必要（これが抜けるとuserId取れない） -->
+<!-- ✅ ✅ ✅ LIFF SDK（これ絶対必要） -->
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
 <style>
@@ -73,10 +73,9 @@ button {
 <script>
 let userId = "";
 
-// ✅ ✅ ✅ ページ読み込み時
+// ✅ ページ読み込み時
 window.onload = async function () {
   try {
-    // ✅ ✅ ✅ 必ず自分のLIFF IDにする
     await liff.init({ liffId: "2009322369-Om7WRQAU" });
 
     if (!liff.isLoggedIn()) {
@@ -84,19 +83,22 @@ window.onload = async function () {
       return;
     }
 
-    // ✅ userId取得
     const profile = await liff.getProfile();
     userId = profile.userId;
+
+    // ✅ ✅ ✅ ここで確認（出れば成功）
+    alert("取得したuserId: " + userId);
 
     console.log("LINE userId:", userId);
 
   } catch (err) {
-    console.error("LIFFエラー:", err);
+    alert("LIFFエラー: " + err);
+    console.error(err);
   }
 };
 
 
-// ✅ ✅ ✅ フォーム送信
+// ✅ フォーム送信
 document.getElementById("form").onsubmit = async function(e) {
   e.preventDefault();
 
@@ -105,7 +107,6 @@ document.getElementById("form").onsubmit = async function(e) {
   // ✅ userId追加
   data.line_user_id = userId;
 
-  // ✅ デバッグ（確認）
   console.log("送信データ:", data);
 
   try {
