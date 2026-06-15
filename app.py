@@ -13,6 +13,32 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
+# ===== LINE設定 =====
+LINE_TOKEN = "oX7OXZ7IrZen3CMFYM7oFN0r6N6x/+wmC/LhAC3sm/v7VZoe3eK0AmvJ9pj97+wxohqrnFdgY1IzItZ5i1vqxbKmMc4Uh51bRAZQ6XNziPb1TD2giBBURVAslvv6uxN6vUIpXogs9N4s+2Ex0ScmnwdB04t89/1O/w1cDnyilFU="
+LINE_URL = "https://api.line.me/v2/bot/message/push"
+
+
+# ===== LINE送信関数 =====
+def send_line_message(user_id, text):
+    headers = {
+        "Authorization": f"Bearer {LINE_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "to": user_id,
+        "messages": [
+            {
+                "type": "text",
+                "text": text
+            }
+        ]
+    }
+
+    res = requests.post(LINE_URL, headers=headers, json=data)
+    print("LINE送信結果:", res.text)
+
+
 # ===== 動作確認 =====
 @app.route("/", methods=["GET"])
 def home():
@@ -38,11 +64,11 @@ def submit():
         maker = data.get("maker", "")
         model = data.get("model", "")
         issue = data.get("issue", "")
-        
-        # 1. フロント（LIFF/JS）から届いたLINEユーザーIDを変数に格納します
+
+        # ✅ LINEユーザーID取得
         line_user_id = data.get("line_user_id", "")
 
-        # ✅ Kintone登録データ作成
+        # ✅ Kintone登録
         record = {
             "app": 5,
             "record": {
@@ -51,8 +77,7 @@ def submit():
                 "maker": {"value": maker},
                 "model": {"value": model},
                 "issue": {"value": issue},
-                # 2. kintoneの新しいフィールドコード「lineid」にLINEユーザーIDをセットします
-                "lineid": {"value": line_user_id}
+                "lineid": {"value": line_user_id}  # ←あなたの成功パターン
             }
         }
 
@@ -66,6 +91,13 @@ def submit():
 
         print("Kintone結果:", res.text)
 
+        # ✅ ✅ ✅ LINE通知（ここが今回のゴール）
+        if line_user_id:
+            send_line_message(
+                line_user_id,
+                "✅ 修理受付を受け付けました！担当よりご連絡します。"
+            )
+
         return {"status": "ok"}
 
     except Exception as e:
@@ -73,7 +105,17 @@ def submit():
         return {"status": "error"}
 
 
-# ===== LINE Webhook（今は使わないが残す）=====
+# ===== テスト通知用 =====
+@app.route("/notify_test", methods=["GET"])
+def notify_test():
+    user_id = "ここにあなたのLINEユーザーID"
+
+    send_line_message(user_id, "✅ テスト通知成功！")
+
+    return "OK"
+
+
+# ===== LINE Webhook（将来用）=====
 @app.route("/callback", methods=["POST"])
 def callback():
     return "OK"
