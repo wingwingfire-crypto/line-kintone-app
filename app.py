@@ -9,7 +9,7 @@ def submit():
     maker = data.get("maker", "")
     model = data.get("model", "")
     issue = data.get("issue", "")
-    line_user_id = data.get("line_user_id", "")
+    line_user_id = data.get("name", "")
 
     record = {
         "app": 5,
