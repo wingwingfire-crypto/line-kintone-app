@@ -1,7 +1,11 @@
 <!DOCTYPE html>
 <html>
-<head="UTF-8"><head>
-<title>修理受付</title>
+<head>
+<meta charset="UTF-8">
+<title>修理受付フォーム</title>
+
+<!-- ✅ LIFF SDK -->
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
 <style>
 body {
@@ -9,17 +13,20 @@ body {
   background: #f7f7f7;
   padding: 20px;
 }
+
 .container {
   background: white;
   padding: 20px;
   border-radius: 10px;
 }
+
 input, textarea {
   width: 100%;
   padding: 10px;
   margin-top: 5px;
   margin-bottom: 15px;
 }
+
 button {
   background: #06c755;
   color: white;
@@ -27,6 +34,7 @@ button {
   width: 100%;
   border: none;
   font-size: 16px;
+  border-radius: 5px;
 }
 </style>
 
@@ -62,22 +70,51 @@ button {
 
 </div>
 
+<!-- ✅ LIFF + 送信処理 -->
 <script>
+let userId = "";
+
+window.onload = async function () {
+  try {
+    // ✅ ここにLIFF ID入れる！！！！
+    await liff.init({ liffId: "ここにあなたのLIFF_ID" });
+
+    if (!liff.isLoggedIn()) {
+      liff.login();
+    } else {
+      const profile = await liff.getProfile();
+      userId = profile.userId;
+      console.log("LINE userId:", userId);
+    }
+  } catch (err) {
+    console.error("LIFFエラー:", err);
+  }
+};
+
 document.getElementById("form").onsubmit = async function(e) {
   e.preventDefault();
 
   const data = Object.fromEntries(new FormData(this));
 
-  const res = await fetch("/submit", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(data)
-  });
+  // ✅ LINEユーザーID追加
+  data.line_user_id = userId;
 
-  document.getElementById("msg").innerHTML =
-    "<p>✅ 受付完了しました！</p>";
+  try {
+    await fetch("/submit", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(data)
+    });
 
-  this.reset();
+    document.getElementById("msg").innerHTML =
+      "<p style='color:green;'>✅ 受付完了しました！担当よりご連絡します。</p>";
+
+    document.getElementById("form").reset();
+
+  } catch (err) {
+    document.getElementById("msg").innerHTML =
+      "<p style='color:red;'>❌ 送信に失敗しました</p>";
+  }
 };
 </script>
 
