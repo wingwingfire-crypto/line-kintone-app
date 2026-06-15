@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>修理受付フォーム</title>
 
-<!-- ✅ LIFF SDK -->
+<!-- ✅ ✅ ✅ 絶対必要（これが抜けるとuserId取れない） -->
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
 <style>
@@ -70,34 +70,43 @@ button {
 
 </div>
 
-<!-- ✅ LIFF + 送信処理 -->
 <script>
 let userId = "";
 
+// ✅ ✅ ✅ ページ読み込み時
 window.onload = async function () {
   try {
-    // ✅ ここにLIFF ID入れる！！！！
+    // ✅ ✅ ✅ 必ず自分のLIFF IDにする
     await liff.init({ liffId: "2009322369-Om7WRQAU" });
 
     if (!liff.isLoggedIn()) {
       liff.login();
-    } else {
-      const profile = await liff.getProfile();
-      userId = profile.userId;
-      console.log("LINE userId:", userId);
+      return;
     }
+
+    // ✅ userId取得
+    const profile = await liff.getProfile();
+    userId = profile.userId;
+
+    console.log("LINE userId:", userId);
+
   } catch (err) {
     console.error("LIFFエラー:", err);
   }
 };
 
+
+// ✅ ✅ ✅ フォーム送信
 document.getElementById("form").onsubmit = async function(e) {
   e.preventDefault();
 
   const data = Object.fromEntries(new FormData(this));
 
-  // ✅ LINEユーザーID追加
+  // ✅ userId追加
   data.line_user_id = userId;
+
+  // ✅ デバッグ（確認）
+  console.log("送信データ:", data);
 
   try {
     await fetch("/submit", {
@@ -107,13 +116,13 @@ document.getElementById("form").onsubmit = async function(e) {
     });
 
     document.getElementById("msg").innerHTML =
-      "<p style='color:green;'>✅ 受付完了しました！担当よりご連絡します。</p>";
+      "<p style='color:green;'>✅ 受付完了しました！</p>";
 
     document.getElementById("form").reset();
 
   } catch (err) {
     document.getElementById("msg").innerHTML =
-      "<p style='color:red;'>❌ 送信に失敗しました</p>";
+      "<p style='color:red;'>送信エラー</p>";
   }
 };
 </script>
