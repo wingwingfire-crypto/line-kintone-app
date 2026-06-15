@@ -23,6 +23,10 @@ def submit():
         }
     }
 print("保存データ:", record)
-    requests.post(KINTONE_URL, headers=HEADERS, json=record)
+    response = requests.post(KINTONE_URL, headers=HEADERS, json=record)
+    print("--- kintone通信結果 ---")
+    print("ステータスコード:", response.status_code)
+    print("レスポンス中身:", response.text)
+    print("------------------------")
 
     return {"status": "ok"}
