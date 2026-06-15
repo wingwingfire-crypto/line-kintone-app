@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head="UTF-8"><head>
+<title>修理受付</title>
+
+<style>
+body {
+  font-family: Arial;
+  background: #f7f7f7;
+  padding: 20px;
+}
+.container {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+}
+input, textarea {
+  width: 100%;
+  padding: 10px;
+  margin-top: 5px;
+  margin-bottom: 15px;
+}
+button {
+  background: #06c755;
+  color: white;
+  padding: 12px;
+  width: 100%;
+  border: none;
+  font-size: 16px;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+<h2>修理受付フォーム</h2>
+
+<form id="form">
+
+<label>お名前</label>
+<input type="text" name="name" required>
+
+<label>電話番号</label>
+<input type="text" name="phone" required>
+
+<label>メーカー</label>
+<input type="text" name="maker">
+
+<label>型番</label>
+<input type="text" name="model">
+
+<label>故障内容</label>
+<textarea name="issue"></textarea>
+
+<button type="submit">送信する</button>
+
+</form>
+
+<div id="msg"></div>
+
+</div>
+
+<script>
+document.getElementById("form").onsubmit = async function(e) {
+  e.preventDefault();
+
+  const data = Object.fromEntries(new FormData(this));
+
+  const res = await fetch("/submit", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(data)
+  });
+
+  document.getElementById("msg").innerHTML =
+    "<p>✅ 受付完了しました！</p>";
+
+  this.reset();
+};
+</script>
+
+</body>
+</html>
