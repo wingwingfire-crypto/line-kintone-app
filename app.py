@@ -9,7 +9,7 @@ def submit():
     maker = data.get("maker", "")
     model = data.get("model", "")
     issue = data.get("issue", "")
-    line_user_id = data.get("name", "")
+    line_user_id = data.get("line_user_id", "")
 
     record = {
         "app": 5,
@@ -19,7 +19,7 @@ def submit():
             "maker": {"value": maker},
             "model": {"value": model},
             "issue": {"value": issue},
-            "line_user_id": {"value": line_user_id}
+            "line_user_id": {"value": name}
         }
     }
     print("保存データ:", record)
