@@ -22,7 +22,7 @@ def submit():
             "line_user_id": {"value": line_user_id}
         }
     }
-
+print("保存データ:", record)
     requests.post(KINTONE_URL, headers=HEADERS, json=record)
 
     return {"status": "ok"}
