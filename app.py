@@ -9,6 +9,8 @@ def submit():
     maker = data.get("maker", "")
     model = data.get("model", "")
     issue = data.get("issue", "")
+    
+    # 1. フロント（LIFF/JS）からは今まで通り「line_user_id」で届くので、変数に格納します
     line_user_id = data.get("line_user_id", "")
 
     record = {
@@ -19,7 +21,8 @@ def submit():
             "maker": {"value": maker},
             "model": {"value": model},
             "issue": {"value": issue},
-            "line_user_id": {"value": name}
+            # 2. kintone側の新しいフィールドコード「lineid」に対して、上の変数（値）をセットします
+            "lineid": {"value": line_user_id}
         }
     }
     print("保存データ:", record)
