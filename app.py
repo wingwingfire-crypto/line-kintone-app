@@ -22,7 +22,7 @@ def submit():
             "line_user_id": {"value": line_user_id}
         }
     }
-print("保存データ:", record)
+    print("保存データ:", record)
     response = requests.post(KINTONE_URL, headers=HEADERS, json=record)
     print("--- kintone通信結果 ---")
     print("ステータスコード:", response.status_code)
