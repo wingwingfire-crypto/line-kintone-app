@@ -1,8 +1,6 @@
 from flask import Flask, request, send_from_directory
 import requests
-import os
-
-app = Flask(__name__)
+app = Flask(__name__)import os
 
 # ===== Kintone設定 =====
 KINTONE_URL = "https://2zx7vnpprtja.cybozu.com/k/v1/record.json"
@@ -59,16 +57,20 @@ def submit():
     try:
         print("受信データ:", data)
 
+        # ===== 入力データ =====
         name = data.get("name", "")
         phone = data.get("phone", "")
         maker = data.get("maker", "")
         model = data.get("model", "")
         issue = data.get("issue", "")
 
-        # ✅ LINEユーザーID取得
+        # ✅ LINEユーザーID
         line_user_id = data.get("line_user_id", "")
 
-        # ✅ Kintone登録
+        # ✅ ✅ ✅ 通知用URLをここで作る（今回の核心）
+        notify_url = f"https://line-kintone-app.onrender.com/notify?user={line_user_id}"
+
+        # ===== Kintone登録 =====
         record = {
             "app": 5,
             "record": {
@@ -77,7 +79,8 @@ def submit():
                 "maker": {"value": maker},
                 "model": {"value": model},
                 "issue": {"value": issue},
-                "lineid": {"value": line_user_id}  # ←あなたの成功パターン
+                "lineid": {"value": line_user_id},
+                "notify_url": {"value": notify_url}   # ←これ追加
             }
         }
 
@@ -91,7 +94,7 @@ def submit():
 
         print("Kintone結果:", res.text)
 
-        # ✅ ✅ ✅ LINE通知（ここが今回のゴール）
+        # ✅ ✅ 自動通知（受付完了）
         if line_user_id:
             send_line_message(
                 line_user_id,
@@ -105,7 +108,21 @@ def submit():
         return {"status": "error"}
 
 
-# ===== テスト通知用 =====
+# ===== ✅ 通知用エンドポイント（ボタン用） =====
+@app.route("/notify", methods=["GET"])
+def notify():
+    user_id = request.args.get("user")
+
+    if user_id:
+        send_line_message(
+            user_id,
+            "✅ 修理が完了しました！ご確認ください。"
+        )
+
+    return "通知送信OK"
+
+
+# ===== テスト通知 =====
 @app.route("/notify_test", methods=["GET"])
 def notify_test():
     user_id = "Ue90610c9001350129a502f1a7eda69da"
@@ -120,12 +137,3 @@ def notify_test():
 def callback():
     return "OK"
 
-
-
-@app.route("/notify", methods=["GET"])
-def notify():
-    user_id = request.args.get("user")
-
-    send_line_message(user_id, "✅ 修理が完了しました！ご確認ください。")
-
-    return "通知送信OK"
