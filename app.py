@@ -1,14 +1,16 @@
-from flask import Flask, request, send_from_directoryfrom flask import Flask, request,import requests
+from flask import Flask, request, send_from_directory
+import requests
 import os
 
 app = Flask(__name__)
 
 # ===== Kintone設定 =====
-KINTONE_URL = "https://2zx7vnpprtja.cybozu.com/k/v1/record.json"
-API_TOKEN = os.environ.get("KINTONE_API_TOKEN")
+KINTONE_BASE = "https://2zx7vnpprtja.cybozu.com"
+KINTONE_GET_URL = KINTONE_BASE + "/k/v1/records.json"
+KINTONE_API_TOKEN = os.environ.get("KINTONE_API_TOKEN")
 
 HEADERS = {
-    "X-Cybozu-API-Token": API_TOKEN,
+    "X-Cybozu-API-Token": KINTONE_API_TOKEN,
     "Content-Type": "application/json"
 }
 
@@ -31,30 +33,21 @@ def send_line_message(user_id, text):
         ]
     }
 
-    res = requests.post(LINE_URL, headers=headers, json=data)
-    print("LINE送信結果:", res.text)
+    requests.post(LINE_URL, headers=headers, json=data)
 
 
-# ===== 動作確認 =====
-@app.route("/", methods=["GET"])
-def home():
-    return "OK"
-
-
-# ===== フォーム表示 =====
+# ===== フォーム =====
 @app.route("/form", methods=["GET"])
 def form():
     return send_from_directory(".", "form.html")
 
 
-# ===== 送信処理 =====
+# ===== 登録 =====
 @app.route("/submit", methods=["POST"])
 def submit():
     data = request.json
 
     try:
-        print("受信データ:", data)
-
         name = data.get("name", "")
         phone = data.get("phone", "")
         maker = data.get("maker", "")
@@ -62,10 +55,6 @@ def submit():
         issue = data.get("issue", "")
         line_user_id = data.get("line_user_id", "")
 
-        # ✅ 初期ステータス
-        status_code = "received"
-
-        # ✅ Kintone登録（notifyurlは入れない）
         record = {
             "app": 5,
             "record": {
@@ -75,43 +64,60 @@ def submit():
                 "model": {"value": model},
                 "issue": {"value": issue},
                 "lineid": {"value": line_user_id},
-                "statuscode": {"value": status_code}
+                "statuscode": {"value": "received"}
             }
         }
 
-        print("保存データ:", record)
+        requests.post(
+            KINTONE_BASE + "/k/v1/record.json",
+            headers=HEADERS,
+            json=record
+        )
 
-        res = requests.post(KINTONE_URL, headers=HEADERS, json=record)
-        print("Kintone結果:", res.text)
-
-        # ✅ 受付通知
         if line_user_id:
-            send_line_message(
-                line_user_id,
-                "📩 修理受付を受け付けました。"
-            )
+            send_line_message(line_user_id, "📩 修理受付を受け付けました。")
 
         return {"status": "ok"}
 
     except Exception as e:
-        print("エラー:", e)
+        print(e)
         return {"status": "error"}
 
 
-# ===== ✅ 通知処理（ここが核心🔥）=====
+# ===== ✅ 通知（ここが核心🔥） =====
 @app.route("/notify", methods=["GET"])
 def notify():
     user_id = request.args.get("user")
-    statuscode = request.args.get("statuscode")
 
-    print("受信statuscode:", statuscode)
+    print("受信user:", user_id)
+
+    # ✅ Kintoneから該当レコード取得
+    query = f'lineid="{user_id}" order by record_id desc limit 1'
+
+    params = {
+        "app": 5,
+        "query": query
+    }
+
+    res = requests.get(KINTONE_GET_URL, headers=HEADERS, params=params)
+    result = res.json()
+
+    print("Kintone取得:", result)
+
+    if len(result.get("records", [])) == 0:
+        return "レコードなし"
+
+    record = result["records"][0]
+    statuscode = record["statuscode"]["value"]
+
+    print("取得statuscode:", statuscode)
 
     # ✅ ステータスごとのメッセージ
     if statuscode == "received":
         message = "📩 修理受付を受け付けました。"
 
     elif statuscode == "pickup_requested":
-        message = "🚚 集荷を依頼しました。到着までお待ちください。"
+        message = "🚚 集荷を依頼しました。"
 
     elif statuscode == "waiting_arrival":
         message = "📦 端末の到着をお待ちしています。"
@@ -144,9 +150,3 @@ def notify():
         send_line_message(user_id, message)
 
     return "通知送信OK"
-
-
-# ===== Webhook（未使用）=====
-@app.route("/callback", methods=["POST"])
-def callback():
-    return "OK"
