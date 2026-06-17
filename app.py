@@ -108,7 +108,7 @@ def notify():
         "query": query
     }
 
-    res = requests.get(KINTONE_GET_URL, headers=HEADERS, params=params)
+    res = requests.post(KINTONE_GET_URL, headers=HEADERS, json=params)
     result = res.json()
 
     print("取得結果:", result)
