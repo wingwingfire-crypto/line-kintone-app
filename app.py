@@ -1,5 +1,4 @@
-from flask import Flask, request, send_from_directory
-import requests
+from flask import Flask, request, send_from_directoryfrom flask import Flask, request,import requests
 import os
 
 app = Flask(__name__)
@@ -18,7 +17,7 @@ LINE_TOKEN = "oX7OXZ7IrZen3CMFYM7oFN0r6N6x/+wmC/LhAC3sm/v7VZoe3eK0AmvJ9pj97+wxoh
 LINE_URL = "https://api.line.me/v2/bot/message/push"
 
 
-# ===== LINE送信関数 =====
+# ===== LINE送信 =====
 def send_line_message(user_id, text):
     headers = {
         "Authorization": f"Bearer {LINE_TOKEN}",
@@ -48,7 +47,7 @@ def form():
     return send_from_directory(".", "form.html")
 
 
-# ===== フォーム送信処理 =====
+# ===== 送信処理 =====
 @app.route("/submit", methods=["POST"])
 def submit():
     data = request.json
@@ -56,23 +55,17 @@ def submit():
     try:
         print("受信データ:", data)
 
-        # 入力データ
         name = data.get("name", "")
         phone = data.get("phone", "")
         maker = data.get("maker", "")
         model = data.get("model", "")
         issue = data.get("issue", "")
-
-        # LINEユーザーID
         line_user_id = data.get("line_user_id", "")
 
         # ✅ 初期ステータス
         status_code = "received"
 
-        # ✅ 通知用URL（ここがポイント）
-        notify_url = f"https://line-kintone-app.onrender.com/notify?user={line_user_id}&statuscode={status_code}"
-
-        # Kintone登録
+        # ✅ Kintone登録（notifyurlは入れない）
         record = {
             "app": 5,
             "record": {
@@ -82,7 +75,6 @@ def submit():
                 "model": {"value": model},
                 "issue": {"value": issue},
                 "lineid": {"value": line_user_id},
-                "notifyurl": {"value": notify_url},
                 "statuscode": {"value": status_code}
             }
         }
@@ -92,11 +84,11 @@ def submit():
         res = requests.post(KINTONE_URL, headers=HEADERS, json=record)
         print("Kintone結果:", res.text)
 
-        # ✅ 受付通知（自動）
+        # ✅ 受付通知
         if line_user_id:
             send_line_message(
                 line_user_id,
-                "✅ 修理受付を受け付けました！"
+                "📩 修理受付を受け付けました。"
             )
 
         return {"status": "ok"}
@@ -106,13 +98,13 @@ def submit():
         return {"status": "error"}
 
 
-# ===== ✅ 通知処理（ステータス連動）=====
+# ===== ✅ 通知処理（ここが核心🔥）=====
 @app.route("/notify", methods=["GET"])
 def notify():
     user_id = request.args.get("user")
     statuscode = request.args.get("statuscode")
 
-    print("受信ステータス:", statuscode)
+    print("受信statuscode:", statuscode)
 
     # ✅ ステータスごとのメッセージ
     if statuscode == "received":
@@ -128,27 +120,26 @@ def notify():
         message = "🔧 修理作業を進めています。"
 
     elif statuscode == "estimating":
-        message = "🟡 見積を作成中です。しばらくお待ちください。"
+        message = "🟡 見積を作成中です。"
 
     elif statuscode == "quoted":
-        message = "📄 見積をご確認ください。ご承認お待ちしています。"
+        message = "📄 見積をご確認ください。"
 
     elif statuscode == "waiting_parts":
-        message = "📦 部品を手配中です。到着までお待ちください。"
+        message = "📦 部品を手配中です。"
 
     elif statuscode == "completed":
         message = "✅ 修理が完了しました！ご来店お待ちしております。"
 
     elif statuscode == "cancel_return":
-        message = "🔴 修理は中止となり、返却対応となります。"
+        message = "🔴 修理は中止となり返却対応となります。"
 
     elif statuscode == "cancel_disposal":
-        message = "❌ 修理は中止となり、処分対応となります。"
+        message = "❌ 修理は中止となり処分対応となります。"
 
     else:
         message = "📢 状況が更新されました。"
 
-    # LINE送信
     if user_id:
         send_line_message(user_id, message)
 
@@ -159,4 +150,3 @@ def notify():
 @app.route("/callback", methods=["POST"])
 def callback():
     return "OK"
-
