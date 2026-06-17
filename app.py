@@ -125,6 +125,5 @@ def notify():
 @app.route("/callback", methods=["POST"])
 def callback():
     return "OK"
-``
 import os
 
