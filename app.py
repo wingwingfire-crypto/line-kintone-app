@@ -69,7 +69,7 @@ def submit():
                 "issue": {"value": issue},
                 "lineid": {"value": line_user_id},
                 "statuscode": {"value": "received"},
-                "通知ボタン": {"value": notify_url}
+                "notifyurl": {"value": notify_url}
             }
         }
 
