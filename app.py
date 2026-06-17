@@ -101,7 +101,7 @@ def notify():
     print("受信user:", user_id)
 
     # ✅ Kintoneから最新レコード取得
-    query = f'lineid like "{user_id}%" order by record_id desc limit 1'
+    query = f'lineid like "{user_id}" order by record_id desc limit 1'
 
     params = {
         "app": 5,
