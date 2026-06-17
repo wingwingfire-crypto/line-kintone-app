@@ -6,6 +6,7 @@ app = Flask(__name__)
 
 # ===== Kintone設定 =====
 KINTONE_BASE = "https://2zx7vnpprtja.cybozu.com"
+KINTONE_RECORD_URL = KINTONE_BASE + "/k/v1/record.json"
 KINTONE_GET_URL = KINTONE_BASE + "/k/v1/records.json"
 KINTONE_API_TOKEN = os.environ.get("KINTONE_API_TOKEN")
 
@@ -36,13 +37,13 @@ def send_line_message(user_id, text):
     requests.post(LINE_URL, headers=headers, json=data)
 
 
-# ===== フォーム =====
+# ===== フォーム表示 =====
 @app.route("/form", methods=["GET"])
 def form():
     return send_from_directory(".", "form.html")
 
 
-# ===== 登録 =====
+# ===== 登録処理 =====
 @app.route("/submit", methods=["POST"])
 def submit():
     data = request.json
@@ -54,6 +55,9 @@ def submit():
         model = data.get("model", "")
         issue = data.get("issue", "")
         line_user_id = data.get("line_user_id", "")
+
+        # ✅ 通知リンク生成（重要）
+        notify_url = f"https://line-kintone-app.onrender.com/notify?user={line_user_id}"
 
         record = {
             "app": 5,
@@ -69,30 +73,34 @@ def submit():
             }
         }
 
-        requests.post(
-            KINTONE_BASE + "/k/v1/record.json",
+        # ✅ Kintoneへ登録
+        res = requests.post(
+            KINTONE_RECORD_URL,
             headers=HEADERS,
             json=record
         )
 
+        print("Kintone登録:", res.text)
+
+        # ✅ LINE受付通知
         if line_user_id:
             send_line_message(line_user_id, "📩 修理受付を受け付けました。")
 
         return {"status": "ok"}
 
     except Exception as e:
-        print(e)
+        print("エラー:", e)
         return {"status": "error"}
 
 
-# ===== ✅ 通知（ここが核心🔥） =====
+# ===== ✅ 通知処理（核心）=====
 @app.route("/notify", methods=["GET"])
 def notify():
     user_id = request.args.get("user")
 
     print("受信user:", user_id)
 
-    # ✅ Kintoneから該当レコード取得
+    # ✅ Kintoneから最新レコード取得
     query = f'lineid="{user_id}" order by record_id desc limit 1'
 
     params = {
@@ -103,7 +111,7 @@ def notify():
     res = requests.get(KINTONE_GET_URL, headers=HEADERS, params=params)
     result = res.json()
 
-    print("Kintone取得:", result)
+    print("取得結果:", result)
 
     if len(result.get("records", [])) == 0:
         return "レコードなし"
@@ -111,9 +119,9 @@ def notify():
     record = result["records"][0]
     statuscode = record["statuscode"]["value"]
 
-    print("取得statuscode:", statuscode)
+    print("statuscode:", statuscode)
 
-    # ✅ ステータスごとのメッセージ
+    # ✅ 状態別メッセージ
     if statuscode == "received":
         message = "📩 修理受付を受け付けました。"
 
@@ -147,6 +155,7 @@ def notify():
     else:
         message = "📢 状況が更新されました。"
 
+    # ✅ LINE送信
     if user_id:
         send_line_message(user_id, message)
 
