@@ -1,6 +1,5 @@
 from flask import Flask, request, send_from_directory
-import requests
-app = Flask(__name__)import os
+import requestsapp = Flask(__name__)import requests
 
 # ===== Kintone設定 =====
 KINTONE_URL = "https://2zx7vnpprtja.cybozu.com/k/v1/record.json"
@@ -26,10 +25,7 @@ def send_line_message(user_id, text):
     data = {
         "to": user_id,
         "messages": [
-            {
-                "type": "text",
-                "text": text
-            }
+            {"type": "text", "text": text}
         ]
     }
 
@@ -67,7 +63,7 @@ def submit():
         # ✅ LINEユーザーID
         line_user_id = data.get("line_user_id", "")
 
-        # ✅ ✅ ✅ 通知用URLをここで作る（今回の核心）
+        # ✅ 通知URL生成（重要ポイント）
         notify_url = f"https://line-kintone-app.onrender.com/notify?user={line_user_id}"
 
         # ===== Kintone登録 =====
@@ -80,7 +76,7 @@ def submit():
                 "model": {"value": model},
                 "issue": {"value": issue},
                 "lineid": {"value": line_user_id},
-                "notify_url": {"value": notify_url}   # ←これ追加
+                "notifyurl": {"value": notify_url}
             }
         }
 
@@ -94,7 +90,7 @@ def submit():
 
         print("Kintone結果:", res.text)
 
-        # ✅ ✅ 自動通知（受付完了）
+        # ✅ 受付完了通知（自動）
         if line_user_id:
             send_line_message(
                 line_user_id,
@@ -108,7 +104,7 @@ def submit():
         return {"status": "error"}
 
 
-# ===== ✅ 通知用エンドポイント（ボタン用） =====
+# ===== ✅ 通知エンドポイント（ボタン用） =====
 @app.route("/notify", methods=["GET"])
 def notify():
     user_id = request.args.get("user")
@@ -122,18 +118,10 @@ def notify():
     return "通知送信OK"
 
 
-# ===== テスト通知 =====
-@app.route("/notify_test", methods=["GET"])
-def notify_test():
-    user_id = "Ue90610c9001350129a502f1a7eda69da"
-
-    send_line_message(user_id, "✅ テスト通知成功！")
-
-    return "OK"
-
-
-# ===== LINE Webhook（将来用）=====
+# ===== （将来用）Webhook =====
 @app.route("/callback", methods=["POST"])
 def callback():
     return "OK"
+``
+import os
 
