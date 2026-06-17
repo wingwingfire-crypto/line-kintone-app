@@ -34,16 +34,17 @@ def send_line_message(user_id, text):
         ]
     }
 
-    requests.post(LINE_URL, headers=headers, json=data)
+    res = requests.post(LINE_URL, headers=headers, json=data)
+    print("LINE送信:", res.text)
 
 
-# ===== フォーム表示 =====
+# ===== フォーム =====
 @app.route("/form", methods=["GET"])
 def form():
     return send_from_directory(".", "form.html")
 
 
-# ===== 登録処理 =====
+# ===== 登録 =====
 @app.route("/submit", methods=["POST"])
 def submit():
     data = request.json
@@ -56,7 +57,7 @@ def submit():
         issue = data.get("issue", "")
         line_user_id = data.get("line_user_id", "")
 
-        # ✅ 通知リンク生成（重要）
+        # ✅ 通知URL生成
         notify_url = f"https://line-kintone-app.onrender.com/notify?user={line_user_id}"
 
         record = {
@@ -73,7 +74,6 @@ def submit():
             }
         }
 
-        # ✅ Kintoneへ登録
         res = requests.post(
             KINTONE_RECORD_URL,
             headers=HEADERS,
@@ -82,81 +82,89 @@ def submit():
 
         print("Kintone登録:", res.text)
 
-        # ✅ LINE受付通知
         if line_user_id:
             send_line_message(line_user_id, "📩 修理受付を受け付けました。")
 
         return {"status": "ok"}
 
     except Exception as e:
-        print("エラー:", e)
+        print("登録エラー:", e)
         return {"status": "error"}
 
 
-# ===== ✅ 通知処理（核心）=====
+# ===== ✅ 通知（完全修正版）=====
 @app.route("/notify", methods=["GET"])
 def notify():
     user_id = request.args.get("user")
 
     print("受信user:", user_id)
 
-    # ✅ Kintoneから最新レコード取得
-    query = f'lineid like "{user_id}" order by record_id desc limit 1'
+    try:
+        # ✅ 正しいクエリ（重要）
+        query = f'lineid = "{user_id}" order by $id desc limit 1'
 
-    params = {
-        "app": 5,
-        "query": query
-    }
+        params = {
+            "app": 5,
+            "query": query
+        }
 
-    res = requests.post(KINTONE_GET_URL, headers=HEADERS, json=params)
-    result = res.json()
+        # ✅ GETで取得（最重要）
+        res = requests.get(KINTONE_GET_URL, headers=HEADERS, params=params)
+        result = res.json()
 
-    print("取得結果:", result)
+        print("取得結果:", result)
 
-    if len(result.get("records", [])) == 0:
-        return "レコードなし"
+        # ✅ エラー表示（これで原因見える）
+        if "records" not in result:
+            return f"APIエラー: {result}"
 
-    record = result["records"][0]
-    statuscode = record["statuscode"]["value"]
+        if len(result["records"]) == 0:
+            return "レコードなし（検索ヒット0件）"
 
-    print("statuscode:", statuscode)
+        record = result["records"][0]
+        statuscode = record["statuscode"]["value"]
 
-    # ✅ 状態別メッセージ
-    if statuscode == "received":
-        message = "📩 修理受付を受け付けました。"
+        print("取得statuscode:", statuscode)
 
-    elif statuscode == "pickup_requested":
-        message = "🚚 集荷を依頼しました。"
+        # ===== メッセージ分岐 =====
+        if statuscode == "received":
+            message = "📩 修理受付を受け付けました。"
 
-    elif statuscode == "waiting_arrival":
-        message = "📦 端末の到着をお待ちしています。"
+        elif statuscode == "pickup_requested":
+            message = "🚚 集荷を依頼しました。"
 
-    elif statuscode == "repairing":
-        message = "🔧 修理作業を進めています。"
+        elif statuscode == "waiting_arrival":
+            message = "📦 端末の到着をお待ちしています。"
 
-    elif statuscode == "estimating":
-        message = "🟡 見積を作成中です。"
+        elif statuscode == "repairing":
+            message = "🔧 修理作業を進めています。"
 
-    elif statuscode == "quoted":
-        message = "📄 見積をご確認ください。"
+        elif statuscode == "estimating":
+            message = "🟡 見積を作成中です。"
 
-    elif statuscode == "waiting_parts":
-        message = "📦 部品を手配中です。"
+        elif statuscode == "quoted":
+            message = "📄 見積をご確認ください。"
 
-    elif statuscode == "completed":
-        message = "✅ 修理が完了しました！ご来店お待ちしております。"
+        elif statuscode == "waiting_parts":
+            message = "📦 部品を手配中です。"
 
-    elif statuscode == "cancel_return":
-        message = "🔴 修理は中止となり返却対応となります。"
+        elif statuscode == "completed":
+            message = "✅ 修理が完了しました！ご来店お待ちしております。"
 
-    elif statuscode == "cancel_disposal":
-        message = "❌ 修理は中止となり処分対応となります。"
+        elif statuscode == "cancel_return":
+            message = "🔴 修理は中止となり返却対応となります。"
 
-    else:
-        message = "📢 状況が更新されました。"
+        elif statuscode == "cancel_disposal":
+            message = "❌ 修理は中止となり処分対応となります。"
 
-    # ✅ LINE送信
-    if user_id:
-        send_line_message(user_id, message)
+        else:
+            message = "📢 状況が更新されました。"
 
-    return "通知送信OK"
+        if user_id:
+            send_line_message(user_id, message)
+
+        return f"送信完了: {statuscode}"
+
+    except Exception as e:
+        print("通知エラー:", e)
+        return "通知処理エラー"
