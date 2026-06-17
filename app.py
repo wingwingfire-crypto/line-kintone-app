@@ -13,7 +13,7 @@ HEADERS = {
 }
 
 # ===== LINE設定 =====
-LINE_TOKEN = "ここにチャネルアクセストークン"
+LINE_TOKEN = "oX7OXZ7IrZen3CMFYM7oFN0r6N6x/+wmC/LhAC3sm/v7VZoe3eK0AmvJ9pj97+wxohqrnFdgY1IzItZ5i1vqxbKmMc4Uh51bRAZQ6XNziPb1TD2giBBURVAslvv6uxN6vUIpXogs9N4s+2Ex0ScmnwdB04t89/1O/w1cDnyilFU="
 LINE_URL = "https://api.line.me/v2/bot/message/push"
 
 
