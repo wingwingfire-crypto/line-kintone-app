@@ -1,5 +1,8 @@
 from flask import Flask, request, send_from_directory
-import requestsapp = Flask(__name__)import requests
+import requests
+import os
+
+app = Flask(__name__)
 
 # ===== Kintone設定 =====
 KINTONE_URL = "https://2zx7vnpprtja.cybozu.com/k/v1/record.json"
