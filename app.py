@@ -224,4 +224,3 @@ def notify():
     except Exception as e:
         print("通知エラー:", e)
         return "通知処理エラー"
-``
