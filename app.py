@@ -63,7 +63,8 @@ def submit():
                 "model": {"value": model},
                 "issue": {"value": issue},
                 "lineid": {"value": line_user_id},
-                "進捗状況": {"value": "修理受付中"},
+                # ✅ 初期状態（日本語）
+                "ドロップダウン": {"value": "修理受付中"},
                 "notifyurl": {"value": notify_url}
             }
         }
@@ -85,7 +86,7 @@ def submit():
         return {"status": "error"}
 
 
-# ===== ✅ 通知（日本語→英語変換版）=====
+# ===== ✅ 通知（日本語→英語変換対応）=====
 @app.route("/notify", methods=["GET"])
 def notify():
     user_id = request.args.get("user")
@@ -93,8 +94,8 @@ def notify():
     print("受信user:", user_id)
 
     try:
-        # ✅ Kintoneからレコード取得
-        url = f'{KINTONE_GET_URL}?app=5&query=lineid="{user_id}" limit 1'
+        # ✅ 最新レコード取得
+        url = f'{KINTONE_GET_URL}?app=5&query=lineid="{user_id}" order by $id desc limit 1'
 
         headers = {
             "X-Cybozu-API-Token": KINTONE_API_TOKEN
@@ -113,10 +114,12 @@ def notify():
 
         record = result["records"][0]
 
-        # ✅ 日本語ステータス取得
-        status_jp = record["進捗状況"]["value"]
+        # ✅ 日本語ステータス取得（ここが超重要）
+        status_jp = record["ドロップダウン"]["value"]
 
-        # ✅ 日本語 → 英語変換（あなたの画面に完全合わせ）
+        print("日本語ステータス:", status_jp)
+
+        # ✅ 日本語 → 英語変換（完全一致）
         status_map = {
             "修理受付中": "received",
             "集荷依頼済": "pickup_requested",
@@ -130,7 +133,7 @@ def notify():
 
         statuscode = status_map.get(status_jp, "received")
 
-        print("変換後statuscode:", statuscode)
+        print("変換後:", statuscode)
 
         # ===== LINEメッセージ =====
         if statuscode == "received":
@@ -151,9 +154,6 @@ def notify():
         elif statuscode == "waiting_parts":
             message = "📦 部品を手配中です。"
 
-        elif statuscode == "repairing":
-            message = "🔧 修理中です。"
-
         elif statuscode == "completed":
             message = "✅ 修理が完了しました！"
 
@@ -173,3 +173,4 @@ def notify():
     except Exception as e:
         print("通知エラー:", e)
         return "通知処理エラー"
+``
