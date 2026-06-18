@@ -10,11 +10,6 @@ KINTONE_RECORD_URL = KINTONE_BASE + "/k/v1/record.json"
 KINTONE_GET_URL = KINTONE_BASE + "/k/v1/records.json"
 KINTONE_API_TOKEN = os.environ.get("KINTONE_API_TOKEN")
 
-HEADERS = {
-    "X-Cybozu-API-Token": KINTONE_API_TOKEN,
-    "Content-Type": "application/json"
-}
-
 # ===== LINE設定 =====
 LINE_TOKEN = "oX7OXZ7IrZen3CMFYM7oFN0r6N6x/+wmC/LhAC3sm/v7VZoe3eK0AmvJ9pj97+wxohqrnFdgY1IzItZ5i1vqxbKmMc4Uh51bRAZQ6XNziPb1TD2giBBURVAslvv6uxN6vUIpXogs9N4s+2Ex0ScmnwdB04t89/1O/w1cDnyilFU="
 LINE_URL = "https://api.line.me/v2/bot/message/push"
@@ -74,12 +69,12 @@ def submit():
             }
         }
 
-        res = requests.post(
-            KINTONE_RECORD_URL,
-            headers=HEADERS,
-            json=record
-        )
+        headers = {
+            "X-Cybozu-API-Token": KINTONE_API_TOKEN,
+            "Content-Type": "application/json"
+        }
 
+        res = requests.post(KINTONE_RECORD_URL, headers=headers, json=record)
         print("Kintone登録:", res.text)
 
         if line_user_id:
@@ -100,26 +95,24 @@ def notify():
     print("受信user:", user_id)
 
     try:
-        # ✅ 正しいクエリ（重要）
-        query = f'lineid="{user_id}" limit 1'
+        # ✅ URL直書き（これが最重要🔥）
+        url = f'https://2zx7vnpprtja.cybozu.com/k/v1/records.json?app=5&query=lineid="{user_id}"'
 
-        params = {
-            "app": 5,
-            "query": query
+        headers = {
+            "X-Cybozu-API-Token": KINTONE_API_TOKEN
         }
 
-        # ✅ GETで取得（最重要）
-        res = requests.get(KINTONE_GET_URL, headers=HEADERS, params=params)
+        res = requests.get(url, headers=headers)
         result = res.json()
 
         print("取得結果:", result)
 
-        # ✅ エラー表示（これで原因見える）
+        # ✅ エラーチェック
         if "records" not in result:
             return f"APIエラー: {result}"
 
         if len(result["records"]) == 0:
-            return "レコードなし（検索ヒット0件）"
+            return "レコードなし"
 
         record = result["records"][0]
         statuscode = record["statuscode"]["value"]
@@ -160,11 +153,12 @@ def notify():
         else:
             message = "📢 状況が更新されました。"
 
-        if user_id:
-            send_line_message(user_id, message)
+        # ✅ LINE送信
+        send_line_message(user_id, message)
 
         return f"送信完了: {statuscode}"
 
     except Exception as e:
         print("通知エラー:", e)
         return "通知処理エラー"
+``
