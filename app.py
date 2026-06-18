@@ -101,7 +101,7 @@ def notify():
 
     try:
         # ✅ 正しいクエリ（重要）
-        query = f'lineid = "{user_id}" order by $id desc limit 1'
+        query = f'lineid="{user_id}" order by
 
         params = {
             "app": 5,
