@@ -64,7 +64,6 @@ def submit():
                 "issue": {"value": issue},
                 "lineid": {"value": line_user_id},
                 # ✅ 初期状態（日本語）
-                "ドロップダウン": {"value": "修理受付中"},
                 "notifyurl": {"value": notify_url}
             }
         }
