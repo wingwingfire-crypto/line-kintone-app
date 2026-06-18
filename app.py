@@ -121,14 +121,14 @@ def notify():
 
         # ✅ 日本語 → 英語変換（完全一致）
         status_map = {
-            "修理受付中": "received",
-            "集荷依頼済": "pickup_requested",
-            "荷受待（店舗持込待ち）": "waiting_arrival",
-            "見積中": "estimating",
-            "見積提示済": "quoted",
-            "受注（部品待ち）": "waiting_parts",
-            "中止（返却）": "cancel_return",
-            "中止（処分）": "cancel_disposal"
+            "⚪修理受付中": "received",
+            "📩集荷依頼済": "pickup_requested",
+            "🚚荷受待（店舗持込待ち）": "waiting_arrival",
+            "🟡見積中": "estimating",
+            "📄見積提出済": "quoted",
+            "📦受注（部品待ち）": "waiting_parts",
+            "🔴中止（返却）": "cancel_return",
+            "❌中止（処分）": "cancel_disposal"
         }
 
         statuscode = status_map.get(status_jp, "received")
