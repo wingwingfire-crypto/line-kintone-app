@@ -33,7 +33,7 @@ def send_line_message(user_id, text):
     print("LINE送信:", res.text)
 
 
-# ===== フォーム =====
+# ===== フォーム表示 =====
 @app.route("/form", methods=["GET"])
 def form():
     return send_from_directory(".", "form.html")
@@ -63,7 +63,6 @@ def submit():
                 "model": {"value": model},
                 "issue": {"value": issue},
                 "lineid": {"value": line_user_id},
-                # ✅ 初期状態（日本語）
                 "notifyurl": {"value": notify_url}
             }
         }
@@ -85,7 +84,7 @@ def submit():
         return {"status": "error"}
 
 
-# ===== ✅ 通知（日本語→英語変換対応）=====
+# ===== 通知 =====
 @app.route("/notify", methods=["GET"])
 def notify():
     user_id = request.args.get("user")
@@ -103,8 +102,6 @@ def notify():
         res = requests.get(url, headers=headers)
         result = res.json()
 
-        print("取得結果:", result)
-
         if "records" not in result:
             return f"APIエラー: {result}"
 
@@ -113,57 +110,112 @@ def notify():
 
         record = result["records"][0]
 
-        # ✅ 日本語ステータス取得（ここが超重要）
+        # ✅ 日本語ステータス取得
         status_jp = record["ドロップダウン"]["value"]
 
-        print("日本語ステータス:", status_jp)
-
-        # ✅ 日本語 → 英語変換（完全一致）
+        # ✅ 日本語 → 英語変換
         status_map = {
-            "⚪修理受付中": "received",
-            "📩集荷依頼済": "pickup_requested",
-            "🚚荷受待(店舗持込待ち)": "waiting_arrival",
-            "🟡見積中": "estimating",
-            "📄見積提出済": "quoted",
-            "📦受注(部品待ち)": "waiting_parts",
-            "🔴中止(返却)": "cancel_return",
-            "❌中止(処分)": "cancel_disposal"
+            "修理受付中": "received",
+            "集荷依頼済": "pickup_requested",
+            "荷受待（店舗持込待ち）": "waiting_arrival",
+            "見積中": "estimating",
+            "見積提示済": "quoted",
+            "受注（部品待ち）": "waiting_parts",
+            "中止（返却）": "cancel_return",
+            "中止（処分）": "cancel_disposal"
         }
 
         statuscode = status_map.get(status_jp, "received")
 
-        print("変換後:", statuscode)
+        name = record["customer_name"]["value"]
 
-        # ===== LINEメッセージ =====
+        # ===== ✅ 顧客向けメッセージ =====
         if statuscode == "received":
-            message = "📩 修理受付を受け付けました。"
+            message = f"""{name}様
+
+この度は修理のご依頼ありがとうございます。
+
+【修理受付中】
+
+順次対応しております。
+今しばらくお待ちください。
+"""
 
         elif statuscode == "pickup_requested":
-            message = "🚚 集荷を依頼しました。"
+            message = f"""{name}様
+
+【集荷依頼済】
+
+集荷手配が完了しております。
+到着までお待ちください。
+"""
 
         elif statuscode == "waiting_arrival":
-            message = "📦 端末の到着をお待ちしています。"
+            message = f"""{name}様
+
+【荷受待】
+
+端末の到着をお待ちしております。
+"""
 
         elif statuscode == "estimating":
-            message = "🟡 見積を作成中です。"
+            message = f"""{name}様
+
+【見積中】
+
+現在お見積りを作成しております。
+もうしばらくお待ちください。
+"""
 
         elif statuscode == "quoted":
-            message = "📄 見積をご確認ください。"
+            message = f"""{name}様
+
+【見積提示済】
+
+お見積りが完了しております。
+内容をご確認ください。
+"""
 
         elif statuscode == "waiting_parts":
-            message = "📦 部品を手配中です。"
+            message = f"""{name}様
+
+【部品待ち】
+
+部品の手配を行っております。
+入荷までお待ちください。
+"""
 
         elif statuscode == "completed":
-            message = "✅ 修理が完了しました！"
+            message = f"""{name}様
+
+✅ 修理が完了しました！
+
+ご来店お待ちしております。
+"""
 
         elif statuscode == "cancel_return":
-            message = "🔴 修理は中止となり返却となります。"
+            message = f"""{name}様
+
+【修理中止（返却）】
+
+修理不可のため返却となります。
+詳細は別途ご案内いたします。
+"""
 
         elif statuscode == "cancel_disposal":
-            message = "❌ 修理は中止となり処分となります。"
+            message = f"""{name}様
+
+【修理中止（処分）】
+
+修理不可のため処分対応となります。
+何卒ご了承ください。
+"""
 
         else:
-            message = "📢 状況が更新されました。"
+            message = f"""{name}様
+
+ステータスが更新されました。
+"""
 
         send_line_message(user_id, message)
 
@@ -172,3 +224,4 @@ def notify():
     except Exception as e:
         print("通知エラー:", e)
         return "通知処理エラー"
+``
