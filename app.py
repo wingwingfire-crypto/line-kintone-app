@@ -52,7 +52,6 @@ def submit():
         issue = data.get("issue", "")
         line_user_id = data.get("line_user_id", "")
 
-        # ✅ 通知URL生成
         notify_url = f"https://line-kintone-app.onrender.com/notify?user={line_user_id}"
 
         record = {
@@ -64,7 +63,7 @@ def submit():
                 "model": {"value": model},
                 "issue": {"value": issue},
                 "lineid": {"value": line_user_id},
-                "statuscode": {"value": "received"},
+                "進捗状況": {"value": "修理受付中"},
                 "notifyurl": {"value": notify_url}
             }
         }
@@ -77,8 +76,7 @@ def submit():
         res = requests.post(KINTONE_RECORD_URL, headers=headers, json=record)
         print("Kintone登録:", res.text)
 
-        if line_user_id:
-            send_line_message(line_user_id, "📩 修理受付を受け付けました。")
+        send_line_message(line_user_id, "📩 修理受付を受け付けました。")
 
         return {"status": "ok"}
 
@@ -87,7 +85,7 @@ def submit():
         return {"status": "error"}
 
 
-# ===== ✅ 通知（完全修正版）=====
+# ===== ✅ 通知（日本語→英語変換版）=====
 @app.route("/notify", methods=["GET"])
 def notify():
     user_id = request.args.get("user")
@@ -95,8 +93,8 @@ def notify():
     print("受信user:", user_id)
 
     try:
-        # ✅ URL直書き（これが最重要🔥）
-        url = f'https://2zx7vnpprtja.cybozu.com/k/v1/records.json?app=5&query=lineid="{user_id}"'
+        # ✅ Kintoneからレコード取得
+        url = f'{KINTONE_GET_URL}?app=5&query=lineid="{user_id}" limit 1'
 
         headers = {
             "X-Cybozu-API-Token": KINTONE_API_TOKEN
@@ -107,7 +105,6 @@ def notify():
 
         print("取得結果:", result)
 
-        # ✅ エラーチェック
         if "records" not in result:
             return f"APIエラー: {result}"
 
@@ -115,11 +112,27 @@ def notify():
             return "レコードなし"
 
         record = result["records"][0]
-        statuscode = record["statuscode"]["value"]
 
-        print("取得statuscode:", statuscode)
+        # ✅ 日本語ステータス取得
+        status_jp = record["進捗状況"]["value"]
 
-        # ===== メッセージ分岐 =====
+        # ✅ 日本語 → 英語変換（あなたの画面に完全合わせ）
+        status_map = {
+            "修理受付中": "received",
+            "集荷依頼済": "pickup_requested",
+            "荷受待（店舗持込待ち）": "waiting_arrival",
+            "見積中": "estimating",
+            "見積提示済": "quoted",
+            "受注（部品待ち）": "waiting_parts",
+            "中止（返却）": "cancel_return",
+            "中止（処分）": "cancel_disposal"
+        }
+
+        statuscode = status_map.get(status_jp, "received")
+
+        print("変換後statuscode:", statuscode)
+
+        # ===== LINEメッセージ =====
         if statuscode == "received":
             message = "📩 修理受付を受け付けました。"
 
@@ -128,9 +141,6 @@ def notify():
 
         elif statuscode == "waiting_arrival":
             message = "📦 端末の到着をお待ちしています。"
-
-        elif statuscode == "repairing":
-            message = "🔧 修理作業を進めています。"
 
         elif statuscode == "estimating":
             message = "🟡 見積を作成中です。"
@@ -141,22 +151,24 @@ def notify():
         elif statuscode == "waiting_parts":
             message = "📦 部品を手配中です。"
 
+        elif statuscode == "repairing":
+            message = "🔧 修理中です。"
+
         elif statuscode == "completed":
-            message = "✅ 修理が完了しました！ご来店お待ちしております。"
+            message = "✅ 修理が完了しました！"
 
         elif statuscode == "cancel_return":
-            message = "🔴 修理は中止となり返却対応となります。"
+            message = "🔴 修理は中止となり返却となります。"
 
         elif statuscode == "cancel_disposal":
-            message = "❌ 修理は中止となり処分対応となります。"
+            message = "❌ 修理は中止となり処分となります。"
 
         else:
             message = "📢 状況が更新されました。"
 
-        # ✅ LINE送信
         send_line_message(user_id, message)
 
-        return f"送信完了: {statuscode}"
+        return f"送信完了: {status_jp}"
 
     except Exception as e:
         print("通知エラー:", e)
