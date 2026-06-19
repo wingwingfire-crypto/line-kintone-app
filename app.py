@@ -116,7 +116,7 @@ def notify():
 
         # 日本時間（JST）
         JST = timezone(timedelta(hours=9))
-        now_time = datetime.now(JST).strftime("%Y-%m-%dT%H:%M:%S%z"
+        now_time = datetime.now(JST).strftime("%Y-%m-%dT%H:%M:%S%z")
 
         # ✅ 日本語ステータス
         status_jp = record["ドロップダウン"]["value"]
