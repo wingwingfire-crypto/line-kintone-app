@@ -15,6 +15,9 @@ KINTONE_API_TOKEN = os.environ.get("KINTONE_API_TOKEN")
 LINE_TOKEN = "oX7OXZ7IrZen3CMFYM7oFN0r6N6x/+wmC/LhAC3sm/v7VZoe3eK0AmvJ9pj97+wxohqrnFdgY1IzItZ5i1vqxbKmMc4Uh51bRAZQ6XNziPb1TD2giBBURVAslvv6uxN6vUIpXogs9N4s+2Ex0ScmnwdB04t89/1O/w1cDnyilFU="
 LINE_URL = "https://api.line.me/v2/bot/message/push"
 
+# ===== 日本時間 =====
+JST = timezone(timedelta(hours=9))
+
 
 # ===== LINE送信 =====
 def send_line_message(user_id, text):
@@ -93,7 +96,7 @@ def notify():
     print("受信user:", user_id)
 
     try:
-        # ✅ 最新レコード取得
+        # ===== レコード取得 =====
         url = f'{KINTONE_GET_URL}?app=5&query=lineid="{user_id}" order by $id desc limit 1'
 
         headers = {
@@ -103,25 +106,20 @@ def notify():
         res = requests.get(url, headers=headers)
         result = res.json()
 
-        if "records" not in result:
-            return f"APIエラー: {result}"
-
-        if len(result["records"]) == 0:
+        if "records" not in result or len(result["records"]) == 0:
             return "レコードなし"
 
         record = result["records"][0]
 
-        # ✅ ID取得（更新に使う）
+        # ===== 基本情報 =====
         record_id = record["$id"]["value"]
+        name = record["customer_name"]["value"]
 
-        # 日本時間（JST）
-        JST = timezone(timedelta(hours=9))
-        now_time = datetime.now(JST).strftime("%Y-%m-%dT%H:%M:%S%z")
+        # ✅ ステータス取得（ズレ防止）
+        status_jp = record["ドロップダウン"]["value"].strip()
+        print("取得ステータス:", status_jp)
 
-        # ✅ 日本語ステータス
-        status_jp = record["ドロップダウン"]["value"]
-
-        # ✅ マップ
+        # ===== マップ（Kintoneと完全一致させる）=====
         status_map = {
             "⚪修理受付中": "received",
             "📩集荷依頼済": "pickup_requested",
@@ -133,9 +131,8 @@ def notify():
             "❌中止(処分)": "cancel_disposal"
         }
 
-        statuscode = status_map.get(status_jp, "received")
-
-        name = record["customer_name"]["value"]
+        statuscode = status_map.get(status_jp, "unknown")
+        print("変換後:", statuscode)
 
         # ===== メッセージ =====
         if statuscode == "received":
@@ -147,12 +144,30 @@ def notify():
 今しばらくお待ちください。
 """
 
+        elif statuscode == "pickup_requested":
+            message = f"""{name}様
+
+【集荷依頼済】
+
+集荷手配が完了しております。
+到着までお待ちください。
+"""
+
+        elif statuscode == "waiting_arrival":
+            message = f"""{name}様
+
+【荷受待】
+
+端末の到着をお待ちしております。
+"""
+
         elif statuscode == "estimating":
             message = f"""{name}様
 
 【見積中】
 
 現在お見積りを作成しております。
+もうしばらくお待ちください。
 """
 
         elif statuscode == "quoted":
@@ -160,6 +175,7 @@ def notify():
 
 【見積提示済】
 
+お見積りが完了しております。
 内容をご確認ください。
 """
 
@@ -168,35 +184,43 @@ def notify():
 
 【部品待ち】
 
+部品の手配を行っております。
 入荷までお待ちください。
 """
 
         elif statuscode == "cancel_return":
             message = f"""{name}様
 
-【中止（返却）】
+【修理中止（返却）】
 
-返却となります。
+修理不可のため返却となります。
+詳細は別途ご案内いたします。
 """
 
         elif statuscode == "cancel_disposal":
             message = f"""{name}様
 
-【中止（処分）】
+【修理中止（処分）】
 
-処分となります。
+修理不可のため処分対応となります。
+何卒ご了承ください。
 """
 
         else:
+            # 👇 デバッグしやすくする
             message = f"""{name}様
 
-ステータスが更新されました。
+ステータス不一致：
+{status_jp}
 """
 
-        # ✅ LINE送信
+        # ===== LINE送信 =====
         send_line_message(user_id, message)
 
-        # ✅ Kintone更新（履歴保存）
+        # ===== 日本時間 =====
+        now_time = datetime.now(JST).strftime("%Y-%m-%dT%H:%M:%S%z")
+
+        # ===== Kintone更新 =====
         update_url = KINTONE_BASE + "/k/v1/record.json"
 
         update_data = {
