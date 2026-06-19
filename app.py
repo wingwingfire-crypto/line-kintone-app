@@ -1,6 +1,7 @@
 from flask import Flask, request, send_from_directory
 import requests
 import os
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -33,7 +34,7 @@ def send_line_message(user_id, text):
     print("LINE送信:", res.text)
 
 
-# ===== フォーム表示 =====
+# ===== フォーム =====
 @app.route("/form", methods=["GET"])
 def form():
     return send_from_directory(".", "form.html")
@@ -110,10 +111,16 @@ def notify():
 
         record = result["records"][0]
 
-        # ✅ 日本語ステータス取得
+        # ✅ ID取得（更新に使う）
+        record_id = record["$id"]["value"]
+
+        # ✅ 現在日時
+        now_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+09:00")
+
+        # ✅ 日本語ステータス
         status_jp = record["ドロップダウン"]["value"]
 
-        # ✅ 日本語 → 英語変換
+        # ✅ マップ
         status_map = {
             "⚪修理受付中": "received",
             "📩集荷依頼済": "pickup_requested",
@@ -129,33 +136,14 @@ def notify():
 
         name = record["customer_name"]["value"]
 
-        # ===== ✅ 顧客向けメッセージ =====
+        # ===== メッセージ =====
         if statuscode == "received":
             message = f"""{name}様
-
-この度は修理のご依頼ありがとうございます。
 
 【修理受付中】
 
 順次対応しております。
 今しばらくお待ちください。
-"""
-
-        elif statuscode == "pickup_requested":
-            message = f"""{name}様
-
-【集荷依頼済】
-
-集荷手配が完了しております。
-到着までお待ちください。
-"""
-
-        elif statuscode == "waiting_arrival":
-            message = f"""{name}様
-
-【荷受待】
-
-端末の到着をお待ちしております。
 """
 
         elif statuscode == "estimating":
@@ -164,7 +152,6 @@ def notify():
 【見積中】
 
 現在お見積りを作成しております。
-もうしばらくお待ちください。
 """
 
         elif statuscode == "quoted":
@@ -172,7 +159,6 @@ def notify():
 
 【見積提示済】
 
-お見積りが完了しております。
 内容をご確認ください。
 """
 
@@ -181,34 +167,23 @@ def notify():
 
 【部品待ち】
 
-部品の手配を行っております。
 入荷までお待ちください。
-"""
-
-        elif statuscode == "completed":
-            message = f"""{name}様
-
-✅ 修理が完了しました！
-
-ご来店お待ちしております。
 """
 
         elif statuscode == "cancel_return":
             message = f"""{name}様
 
-【修理中止（返却）】
+【中止（返却）】
 
-修理不可のため返却となります。
-詳細は別途ご案内いたします。
+返却となります。
 """
 
         elif statuscode == "cancel_disposal":
             message = f"""{name}様
 
-【修理中止（処分）】
+【中止（処分）】
 
-修理不可のため処分対応となります。
-何卒ご了承ください。
+処分となります。
 """
 
         else:
@@ -217,7 +192,28 @@ def notify():
 ステータスが更新されました。
 """
 
+        # ✅ LINE送信
         send_line_message(user_id, message)
+
+        # ✅ Kintone更新（履歴保存）
+        update_url = KINTONE_BASE + "/k/v1/record.json"
+
+        update_data = {
+            "app": 5,
+            "id": record_id,
+            "record": {
+                "lastnotify": {"value": now_time},
+                "notifymessage": {"value": message}
+            }
+        }
+
+        update_headers = {
+            "X-Cybozu-API-Token": KINTONE_API_TOKEN,
+            "Content-Type": "application/json"
+        }
+
+        res = requests.put(update_url, headers=update_headers, json=update_data)
+        print("履歴更新:", res.text)
 
         return f"送信完了: {status_jp}"
 
