@@ -1,7 +1,7 @@
 from flask import Flask, request, send_from_directory
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 app = Flask(__name__)
 
@@ -114,8 +114,9 @@ def notify():
         # ✅ ID取得（更新に使う）
         record_id = record["$id"]["value"]
 
-        # ✅ 現在日時
-        now_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+09:00")
+        # 日本時間（JST）
+        JST = timezone(timedelta(hours=9))
+        now_time = datetime.now(JST).strftime("%Y-%m-%dT%H:%M:%S%z"
 
         # ✅ 日本語ステータス
         status_jp = record["ドロップダウン"]["value"]
