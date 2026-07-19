@@ -11,7 +11,7 @@ KINTONE_RECORD_URL = KINTONE_BASE + "/k/v1/record.json"
 KINTONE_GET_URL = KINTONE_BASE + "/k/v1/records.json"
 KINTONE_API_TOKEN = os.environ.get("KINTONE_API_TOKEN")
 
-# 新しいKintoneのアプリ番号
+# ===== Kintoneアプリ番号 =====
 KINTONE_APP_ID = 6
 
 # ===== LINE設定 =====
@@ -48,7 +48,6 @@ def format_price(value):
 def format_date(value):
     if value is None or value == "":
         return "未入力"
-
     return value
 
 
@@ -62,7 +61,10 @@ def send_line_message(user_id, text):
     data = {
         "to": user_id,
         "messages": [
-            {"type": "text", "text": text}
+            {
+                "type": "text",
+                "text": text
+            }
         ]
     }
 
@@ -109,11 +111,19 @@ def submit():
             "Content-Type": "application/json"
         }
 
-        res = requests.post(KINTONE_RECORD_URL, headers=headers, json=record)
+        res = requests.post(
+            KINTONE_RECORD_URL,
+            headers=headers,
+            json=record
+        )
+
         print("Kintone登録:", res.text)
 
         if line_user_id:
-            send_line_message(line_user_id, "📩 修理受付を受け付けました。")
+            send_line_message(
+                line_user_id,
+                "📩 修理受付を受け付けました。"
+            )
 
         return {"status": "ok"}
 
@@ -183,6 +193,7 @@ def notify():
         status_jp = get_value(record, "ドロップダウン", "").strip()
         print("取得ステータス:", status_jp)
 
+        # ===== 進捗状況マップ =====
         status_map = {
             "⚪修理受付中": "received",
             "📩集荷依頼済": "pickup_requested",
@@ -190,6 +201,7 @@ def notify():
             "🟡見積中": "estimating",
             "📄見積提出済": "quoted",
             "📦受注(部品待ち)": "waiting_parts",
+            "✅修理完了連絡済": "repair_completed",
             "🔴中止(返却)": "cancel_return",
             "❌中止(処分)": "cancel_disposal"
         }
@@ -278,6 +290,35 @@ def notify():
 
 ■ 修理完了予定日
 {date_text}
+"""
+
+        elif statuscode == "repair_completed":
+            message = f"""{name}様
+
+【修理完了】
+
+お預かりしておりました修理品の修理が完了しました。
+
+■ 修理品情報
+メーカー：{maker}
+型番：{model}
+機番：{serial}
+
+■ 故障内容
+{issue}
+
+■ 修理金額
+{price_text}
+
+■ 修理内容
+{mitsumorinaiyo if mitsumorinaiyo else "未入力"}
+
+お手すきの際にご来店をお願いいたします。
+
+国本刃物 上中野店
+〒700-0972
+岡山県岡山市北区上中野2丁目27-12
+電話番号：086-230-6551
 """
 
         elif statuscode == "cancel_return":
