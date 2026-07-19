@@ -44,7 +44,7 @@ def form():
 
 
 # ===== 登録 =====
-@.route("/submit", methods=["POST"])
+@app.route("/submit", methods=["POST"])
 def submit():
     data = request.json
 
