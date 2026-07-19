@@ -181,13 +181,16 @@ def notify():
         serial = get_value(record, "serial", "")
         issue = get_value(record, "issue", "")
 
-        # ===== 見積情報 =====
+        # ===== 見積・修理情報 =====
         mitsumorikingaku = get_value(record, "mitsumorikingaku", "")
         mitsumorinaiyo = get_value(record, "mitsumorinaiyo", "")
         kanryoyoteibi = get_value(record, "kanryoyoteibi", "")
 
         price_text = format_price(mitsumorikingaku)
         date_text = format_date(kanryoyoteibi)
+
+        # ===== 発送情報 =====
+        okurijobango = get_value(record, "okurijobango", "")
 
         # ===== 進捗状況取得 =====
         status_jp = get_value(record, "ドロップダウン", "").strip()
@@ -202,6 +205,7 @@ def notify():
             "📄見積提出済": "quoted",
             "📦受注(部品待ち)": "waiting_parts",
             "✅修理完了連絡済": "repair_completed",
+            "🚚発送完了": "shipped",
             "🔴中止(返却)": "cancel_return",
             "❌中止(処分)": "cancel_disposal"
         }
@@ -319,6 +323,30 @@ def notify():
 〒700-0972
 岡山県岡山市北区上中野2丁目27-12
 電話番号：086-230-6551
+"""
+
+        elif statuscode == "shipped":
+            message = f"""{name}様
+
+【発送完了】
+
+お預かりしておりました修理品を発送いたしました。
+
+■ 修理品情報
+メーカー：{maker}
+型番：{model}
+機番：{serial}
+
+■ 修理金額
+{price_text}
+
+■ 送り状番号
+{okurijobango if okurijobango else "未入力"}
+
+配送状況は以下よりご確認ください。
+https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
+
+よろしくお願いいたします。
 """
 
         elif statuscode == "cancel_return":
