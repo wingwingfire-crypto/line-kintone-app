@@ -97,7 +97,7 @@ def notify():
 
     try:
         # ===== レコード取得 =====
-        url = f'{KINTONE_GET_URL}?app=5&query=lineid="{user_id}" order by $id desc limit 1'
+        url = f'{KINTONE_GET_URL}?app=6&query=lineid="{user_id}" order by $id desc limit 1'
 
         headers = {
             "X-Cybozu-API-Token": KINTONE_API_TOKEN
