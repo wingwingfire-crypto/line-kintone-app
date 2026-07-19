@@ -225,6 +225,32 @@ def update_repair_answer(record_id, answer_text):
     print("修理可否回答更新:", res.text)
 
 
+# ===== Kintone：キャンセル後対応を保存 =====
+def update_cancel_action(record_id, cancel_text):
+    headers = {
+        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "app": KINTONE_APP_ID,
+        "id": record_id,
+        "record": {
+            "canceltaio": {
+                "value": cancel_text
+            }
+        }
+    }
+
+    res = requests.put(
+        KINTONE_RECORD_URL,
+        headers=headers,
+        json=data
+    )
+
+    print("キャンセル後対応更新:", res.text)
+
+
 # ===== 問い合わせ返信文作成 =====
 def build_status_message(record):
     name = get_value(record, "customer_name", "")
@@ -749,7 +775,7 @@ https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
         return "通知処理エラー"
 
 
-# ===== LINE Webhook：問い合わせ・複数台対応・修理可否回答 =====
+# ===== LINE Webhook：問い合わせ・複数台対応・修理可否回答・キャンセル後対応 =====
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
@@ -763,7 +789,6 @@ def webhook():
             reply_token = event.get("replyToken")
             user_id = event.get("source", {}).get("userId")
 
-            # ===== ボタン選択された場合 =====
             if event_type == "postback":
                 postback_data = event.get("postback", {}).get("data", "")
                 postback_data = html.unescape(postback_data)
@@ -835,6 +860,27 @@ def webhook():
                         model = ""
                         serial = ""
 
+                    quick_reply_items = [
+                        {
+                            "type": "action",
+                            "action": {
+                                "type": "postback",
+                                "label": "店舗で受け取る",
+                                "data": f"action=cancel_pickup&record_id={record_id}",
+                                "displayText": "店舗で受け取る"
+                            }
+                        },
+                        {
+                            "type": "action",
+                            "action": {
+                                "type": "postback",
+                                "label": "店舗で処分する",
+                                "data": f"action=cancel_disposal&record_id={record_id}",
+                                "displayText": "店舗で処分する"
+                            }
+                        }
+                    ]
+
                     reply_message = f"""【キャンセル受付】
 
 修理キャンセルを承りました。
@@ -844,7 +890,71 @@ def webhook():
 型番：{model}
 機番：{serial}
 
-返却方法につきましては、次のご案内をお待ちください。
+返却方法をお選びください。
+"""
+
+                    reply_line_message(reply_token, reply_message, quick_reply_items)
+                    continue
+
+                # ===== キャンセル後：店舗引取 =====
+                if action == "cancel_pickup" and record_id:
+                    update_cancel_action(record_id, "店舗引取")
+
+                    record = get_record_by_id(record_id)
+
+                    if record:
+                        maker = get_value(record, "maker", "")
+                        model = get_value(record, "model", "")
+                        serial = get_value(record, "serial", "")
+                    else:
+                        maker = ""
+                        model = ""
+                        serial = ""
+
+                    reply_message = f"""【返却受付完了】
+
+修理品の店舗引取を承りました。
+
+■ 修理品情報
+メーカー：{maker}
+型番：{model}
+機番：{serial}
+
+キャンセル料が発生する場合は、
+商品返却時にお支払いください。
+
+ご来店をお待ちしております。
+"""
+
+                    reply_line_message(reply_token, reply_message)
+                    continue
+
+                # ===== キャンセル後：処分 =====
+                if action == "cancel_disposal" and record_id:
+                    update_cancel_action(record_id, "処分")
+
+                    record = get_record_by_id(record_id)
+
+                    if record:
+                        maker = get_value(record, "maker", "")
+                        model = get_value(record, "model", "")
+                        serial = get_value(record, "serial", "")
+                    else:
+                        maker = ""
+                        model = ""
+                        serial = ""
+
+                    reply_message = f"""【処分受付完了】
+
+お預かり品を処分いたします。
+
+■ 修理品情報
+メーカー：{maker}
+型番：{model}
+機番：{serial}
+
+キャンセル料が発生する場合は、
+ご来店時または別途ご案内の方法にてお支払いください。
 """
 
                     reply_line_message(reply_token, reply_message)
