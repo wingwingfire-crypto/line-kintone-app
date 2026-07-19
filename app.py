@@ -3,6 +3,7 @@ import requests
 import os
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs
+import html
 
 app = Flask(__name__)
 
@@ -69,7 +70,6 @@ def make_record_label(record):
     else:
         label = f"修理品#{record_id}"
 
-    # LINEのボタン表示が長すぎるとエラーになるので短くする
     if len(label) > 20:
         label = label[:20]
 
@@ -77,20 +77,25 @@ def make_record_label(record):
 
 
 # ===== LINE Push送信 =====
-def send_line_message(user_id, text):
+def send_line_message(user_id, text, quick_reply_items=None):
     headers = {
         "Authorization": f"Bearer {LINE_TOKEN}",
         "Content-Type": "application/json"
     }
 
+    message = {
+        "type": "text",
+        "text": text
+    }
+
+    if quick_reply_items:
+        message["quickReply"] = {
+            "items": quick_reply_items
+        }
+
     data = {
         "to": user_id,
-        "messages": [
-            {
-                "type": "text",
-                "text": text
-            }
-        ]
+        "messages": [message]
     }
 
     res = requests.post(LINE_PUSH_URL, headers=headers, json=data)
@@ -98,33 +103,33 @@ def send_line_message(user_id, text):
 
 
 # ===== LINE Reply送信 =====
-def reply_line_message(reply_token, text):
+def reply_line_message(reply_token, text, quick_reply_items=None):
     headers = {
         "Authorization": f"Bearer {LINE_TOKEN}",
         "Content-Type": "application/json"
     }
 
+    message = {
+        "type": "text",
+        "text": text
+    }
+
+    if quick_reply_items:
+        message["quickReply"] = {
+            "items": quick_reply_items
+        }
+
     data = {
         "replyToken": reply_token,
-        "messages": [
-            {
-                "type": "text",
-                "text": text
-            }
-        ]
+        "messages": [message]
     }
 
     res = requests.post(LINE_REPLY_URL, headers=headers, json=data)
     print("LINE返信:", res.text)
 
 
-# ===== LINE Reply送信：Quick Reply付き =====
+# ===== LINE Reply送信：複数台選択 =====
 def reply_line_quick_reply(reply_token, text, records):
-    headers = {
-        "Authorization": f"Bearer {LINE_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
     items = []
 
     for record in records[:10]:
@@ -141,21 +146,7 @@ def reply_line_quick_reply(reply_token, text, records):
             }
         })
 
-    data = {
-        "replyToken": reply_token,
-        "messages": [
-            {
-                "type": "text",
-                "text": text,
-                "quickReply": {
-                    "items": items
-                }
-            }
-        ]
-    }
-
-    res = requests.post(LINE_REPLY_URL, headers=headers, json=data)
-    print("LINE複数選択返信:", res.text)
+    reply_line_message(reply_token, text, items)
 
 
 # ===== Kintone：ユーザーIDから複数レコード取得 =====
@@ -181,7 +172,6 @@ def get_records_by_user(user_id):
     print("複数取得本文:", res.text)
 
     result = res.json()
-
     return result.get("records", [])
 
 
@@ -206,8 +196,33 @@ def get_record_by_id(record_id):
     print("単体取得本文:", res.text)
 
     result = res.json()
-
     return result.get("record")
+
+
+# ===== Kintone：修理可否回答を保存 =====
+def update_repair_answer(record_id, answer_text):
+    headers = {
+        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "app": KINTONE_APP_ID,
+        "id": record_id,
+        "record": {
+            "shurikahikaito": {
+                "value": answer_text
+            }
+        }
+    }
+
+    res = requests.put(
+        KINTONE_RECORD_URL,
+        headers=headers,
+        json=data
+    )
+
+    print("修理可否回答更新:", res.text)
 
 
 # ===== 問い合わせ返信文作成 =====
@@ -532,6 +547,27 @@ def notify():
 """
 
         elif statuscode == "quoted":
+            quick_reply_items = [
+                {
+                    "type": "action",
+                    "action": {
+                        "type": "postback",
+                        "label": "修理を依頼する",
+                        "data": f"action=repair_accept&record_id={record_id}",
+                        "displayText": "修理を依頼する"
+                    }
+                },
+                {
+                    "type": "action",
+                    "action": {
+                        "type": "postback",
+                        "label": "キャンセルする",
+                        "data": f"action=repair_cancel&record_id={record_id}",
+                        "displayText": "キャンセルする"
+                    }
+                }
+            ]
+
             message = f"""{name}様
 
 【見積提出済】
@@ -555,9 +591,36 @@ def notify():
 ■ 修理完了予定日
 {date_text}
 
-内容をご確認ください。
-修理を進めるか、キャンセルされるかにつきましては、担当者までご連絡ください。
+修理を進めるか、キャンセルされるかをご回答ください。
 """
+
+            send_line_message(user_id, message, quick_reply_items)
+
+            now_time = datetime.now(JST).strftime("%Y-%m-%dT%H:%M:%S%z")
+
+            update_data = {
+                "app": KINTONE_APP_ID,
+                "id": record_id,
+                "record": {
+                    "lastnotify": {"value": now_time},
+                    "notifymessage": {"value": message}
+                }
+            }
+
+            update_headers = {
+                "X-Cybozu-API-Token": KINTONE_API_TOKEN,
+                "Content-Type": "application/json"
+            }
+
+            update_res = requests.put(
+                KINTONE_RECORD_URL,
+                headers=update_headers,
+                json=update_data
+            )
+
+            print("履歴更新:", update_res.text)
+
+            return f"送信完了: {status_jp}"
 
         elif statuscode == "waiting_parts":
             message = f"""{name}様
@@ -686,7 +749,7 @@ https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
         return "通知処理エラー"
 
 
-# ===== LINE Webhook：問い合わせ受付・複数台対応 =====
+# ===== LINE Webhook：問い合わせ・複数台対応・修理可否回答 =====
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
@@ -703,12 +766,15 @@ def webhook():
             # ===== ボタン選択された場合 =====
             if event_type == "postback":
                 postback_data = event.get("postback", {}).get("data", "")
+                postback_data = html.unescape(postback_data)
+
                 print("Postback受信:", postback_data)
 
                 parsed = parse_qs(postback_data)
                 action = parsed.get("action", [""])[0]
                 record_id = parsed.get("record_id", [""])[0]
 
+                # ===== 複数台問い合わせ：選択された修理品の状況を返す =====
                 if action == "check_status" and record_id:
                     record = get_record_by_id(record_id)
 
@@ -720,6 +786,67 @@ def webhook():
                         continue
 
                     reply_message = build_status_message(record)
+                    reply_line_message(reply_token, reply_message)
+                    continue
+
+                # ===== 修理を依頼する =====
+                if action == "repair_accept" and record_id:
+                    update_repair_answer(record_id, "修理する")
+
+                    record = get_record_by_id(record_id)
+
+                    if record:
+                        maker = get_value(record, "maker", "")
+                        model = get_value(record, "model", "")
+                        serial = get_value(record, "serial", "")
+                    else:
+                        maker = ""
+                        model = ""
+                        serial = ""
+
+                    reply_message = f"""【修理受付完了】
+
+ご依頼ありがとうございます。
+これより修理作業に入らせていただきます。
+
+完了次第、こちらのLINEにてご連絡いたします。
+
+■ 修理品情報
+メーカー：{maker}
+型番：{model}
+機番：{serial}
+"""
+
+                    reply_line_message(reply_token, reply_message)
+                    continue
+
+                # ===== キャンセルする =====
+                if action == "repair_cancel" and record_id:
+                    update_repair_answer(record_id, "キャンセル")
+
+                    record = get_record_by_id(record_id)
+
+                    if record:
+                        maker = get_value(record, "maker", "")
+                        model = get_value(record, "model", "")
+                        serial = get_value(record, "serial", "")
+                    else:
+                        maker = ""
+                        model = ""
+                        serial = ""
+
+                    reply_message = f"""【キャンセル受付】
+
+修理キャンセルを承りました。
+
+■ 修理品情報
+メーカー：{maker}
+型番：{model}
+機番：{serial}
+
+返却方法につきましては、次のご案内をお待ちください。
+"""
+
                     reply_line_message(reply_token, reply_message)
                     continue
 
@@ -745,7 +872,6 @@ def webhook():
                 )
                 continue
 
-            # ===== 複数レコード取得 =====
             records = get_records_by_user(user_id)
 
             if len(records) == 0:
@@ -755,7 +881,6 @@ def webhook():
                 )
                 continue
 
-            # 完了精算済み・中止済みを除外
             closed_statuses = [
                 "●完了(精算済)",
                 "🔴中止(返却)",
@@ -777,13 +902,11 @@ def webhook():
                 )
                 continue
 
-            # 1件だけならそのまま返信
             if len(active_records) == 1:
                 reply_message = build_status_message(active_records[0])
                 reply_line_message(reply_token, reply_message)
                 continue
 
-            # 複数件なら選択ボタンを表示
             reply_line_quick_reply(
                 reply_token,
                 "現在、複数の修理品をお預かりしています。\n確認したい修理品を選択してください。",
