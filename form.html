@@ -41,6 +41,11 @@ button {
     cursor: pointer;
 }
 
+button:disabled {
+    background: #aaa;
+    cursor: not-allowed;
+}
+
 #msg {
     margin-top: 20px;
 }
@@ -53,6 +58,8 @@ button {
 <div class="container">
 
 <h2>修理受付フォーム</h2>
+
+<p id="liffStatus" style="color:#555;">LINE連携を確認中です...</p>
 
 <form id="form">
 
@@ -71,7 +78,7 @@ button {
 <label>故障内容</label>
 <textarea name="issue"></textarea>
 
-<button type="submit">送信する</button>
+<button id="submitBtn" type="submit" disabled>送信する</button>
 
 </form>
 
@@ -80,30 +87,66 @@ button {
 </div>
 
 <script>
-
 let userId = "";
 
-window.onload = async () => {
+// LIFF初期化
+window.onload = async function () {
+    const submitBtn = document.getElementById("submitBtn");
+    const liffStatus = document.getElementById("liffStatus");
 
-const profile = await liff.getProfile();
-userId = profile.userId;
+    try {
+        await liff.init({
+            liffId: "2009322369-Om7WRQAU",
+            withLoginOnExternalBrowser: true
+        });
 
+        if (!liff.isLoggedIn()) {
+            liff.login();
+            return;
+        }
+
+        const profile = await liff.getProfile();
+        userId = profile.userId;
+
+        console.log("取得LINE User ID:", userId);
+
+        if (userId) {
+            liffStatus.innerHTML = "LINE連携完了";
+            liffStatus.style.color = "green";
+            submitBtn.disabled = false;
+        } else {
+            liffStatus.innerHTML = "LINEユーザーIDを取得できませんでした";
+            liffStatus.style.color = "red";
+            submitBtn.disabled = true;
+        }
+
+    } catch (err) {
+        console.error("LIFF初期化エラー:", err);
+
+        liffStatus.innerHTML = "LIFF初期化エラー：" + err;
+        liffStatus.style.color = "red";
+
+        alert("LIFF初期化エラー\n" + err);
+        submitBtn.disabled = true;
+    }
 };
 
 
-document.getElementById("form").addEventListener("submit", async (e) => {
-
+// 送信処理
+document.getElementById("form").addEventListener("submit", async function(e) {
     e.preventDefault();
 
     try {
+        if (!userId) {
+            alert("LINEユーザーIDが取得できていません。LINEアプリから開き直してください。");
+            return;
+        }
 
-        const data = Object.fromEntries(
-            new FormData(document.getElementById("form"))
-        );
+        const data = Object.fromEntries(new FormData(this));
 
         data.line_user_id = userId;
 
-        console.log("送信データ", data);
+        console.log("送信データ:", data);
 
         const response = await fetch("/submit", {
             method: "POST",
@@ -115,34 +158,26 @@ document.getElementById("form").addEventListener("submit", async (e) => {
 
         const result = await response.text();
 
-        console.log("サーバ応答", result);
+        console.log("サーバ応答:", result);
 
         if (!response.ok) {
-            throw new Error(
-                "HTTP " + response.status + " : " + result
-            );
+            throw new Error("HTTP " + response.status + " : " + result);
         }
 
         document.getElementById("msg").innerHTML =
             "<p style='color:green;'>✅ 受付完了しました！</p>";
 
-        document.getElementById("form").reset();
+        this.reset();
 
     } catch (err) {
-
-        console.error(err);
+        console.error("送信エラー:", err);
 
         document.getElementById("msg").innerHTML =
-            "<p style='color:red;'>❌ エラー：" +
-            err +
-            "</p>";
+            "<p style='color:red;'>❌ エラー：" + err + "</p>";
 
         alert("送信エラー\n\n" + err);
-
     }
-
 });
-
 </script>
 
 </body>
