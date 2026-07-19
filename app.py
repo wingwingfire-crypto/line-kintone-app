@@ -130,15 +130,32 @@ def notify():
     print("受信user:", user_id)
 
     try:
-        # ===== 最新レコード取得 =====
-        url = f'{KINTONE_GET_URL}?app={KINTONE_APP_ID}&query=lineid="{user_id}" order by $id desc limit 1'
+# ===== 最新レコード取得 =====
+headers = {
+    "X-Cybozu-API-Token": KINTONE_API_TOKEN
+}
 
-        headers = {
-            "X-Cybozu-API-Token": KINTONE_API_TOKEN
-        }
+query = f'lineid = "{user_id}" order by $id desc limit 1'
 
-        res = requests.get(url, headers=headers)
-        result = res.json()
+params = {
+    "app": KINTONE_APP_ID,
+    "query": query
+}
+
+res = requests.get(
+    KINTONE_GET_URL,
+    headers=headers,
+    params=params
+)
+
+print("Kintone取得ステータス:", res.status_code)
+print("Kintone取得本文:", res.text)
+
+try:
+    result = res.json()
+except Exception as e:
+    print("JSON変換エラー:", e)
+    return f"Kintone取得エラー: {res.status_code}"
 
         if "records" not in result or len(result["records"]) == 0:
             return "レコードなし"
