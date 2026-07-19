@@ -130,32 +130,32 @@ def notify():
     print("受信user:", user_id)
 
     try:
-# ===== 最新レコード取得 =====
-headers = {
-    "X-Cybozu-API-Token": KINTONE_API_TOKEN
-}
+        # ===== 最新レコード取得 =====
+        headers = {
+            "X-Cybozu-API-Token": KINTONE_API_TOKEN
+        }
 
-query = f'lineid = "{user_id}" order by $id desc limit 1'
+        query = f'lineid = "{user_id}" order by $id desc limit 1'
 
-params = {
-    "app": KINTONE_APP_ID,
-    "query": query
-}
+        params = {
+            "app": KINTONE_APP_ID,
+            "query": query
+        }
 
-res = requests.get(
-    KINTONE_GET_URL,
-    headers=headers,
-    params=params
-)
+        res = requests.get(
+            KINTONE_GET_URL,
+            headers=headers,
+            params=params
+        )
 
-print("Kintone取得ステータス:", res.status_code)
-print("Kintone取得本文:", res.text)
+        print("Kintone取得ステータス:", res.status_code)
+        print("Kintone取得本文:", res.text)
 
-try:
-    result = res.json()
-except Exception as e:
-    print("JSON変換エラー:", e)
-    return f"Kintone取得エラー: {res.status_code}"
+        try:
+            result = res.json()
+        except Exception as e:
+            print("JSON変換エラー:", e)
+            return f"Kintone取得エラー: {res.status_code}"
 
         if "records" not in result or len(result["records"]) == 0:
             return "レコードなし"
@@ -179,11 +179,10 @@ except Exception as e:
         price_text = format_price(mitsumorikingaku)
         date_text = format_date(kanryoyoteibi)
 
-        # ===== 日本語ステータス取得 =====
+        # ===== 進捗状況取得 =====
         status_jp = get_value(record, "ドロップダウン", "").strip()
         print("取得ステータス:", status_jp)
 
-        # ===== ステータスマップ =====
         status_map = {
             "⚪修理受付中": "received",
             "📩集荷依頼済": "pickup_requested",
@@ -314,7 +313,7 @@ except Exception as e:
         # ===== 日本時間 =====
         now_time = datetime.now(JST).strftime("%Y-%m-%dT%H:%M:%S%z")
 
-        # ===== Kintoneへ通知履歴保存 =====
+        # ===== 通知履歴保存 =====
         update_data = {
             "app": KINTONE_APP_ID,
             "id": record_id,
@@ -329,7 +328,12 @@ except Exception as e:
             "Content-Type": "application/json"
         }
 
-        res = requests.put(KINTONE_RECORD_URL, headers=update_headers, json=update_data)
+        res = requests.put(
+            KINTONE_RECORD_URL,
+            headers=update_headers,
+            json=update_data
+        )
+
         print("履歴更新:", res.text)
 
         return f"送信完了: {status_jp}"
