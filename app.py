@@ -1298,3 +1298,7 @@ def webhook():
 
         return "OK"
 
+    except Exception as e:
+        print("Webhookエラー:", e)
+        return "OK"
+
