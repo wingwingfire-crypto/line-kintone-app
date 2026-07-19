@@ -274,7 +274,6 @@ button:hover:not(:disabled) {
 
     <form id="repairForm">
 
-        <!-- お客様情報 -->
         <div class="card">
             <h2 class="section-title">1. お客様情報</h2>
 
@@ -286,7 +285,6 @@ button:hover:not(:disabled) {
             <p class="hint">ハイフンあり・なし、どちらでも入力できます。</p>
         </div>
 
-        <!-- 修理品情報 -->
         <div class="card">
             <h2 class="section-title">2. 修理品情報</h2>
 
@@ -303,7 +301,7 @@ button:hover:not(:disabled) {
 
             <div id="makerOtherBox" class="hidden">
                 <label>その他メーカー名</label>
-                <input type="text" id="maker_other" name="maker_other" placeholder="メーカー名を入力してください">
+                <input type="text" id="makerOther" name="makerOther" placeholder="メーカー名を入力してください">
             </div>
 
             <label>型番</label>
@@ -313,7 +311,6 @@ button:hover:not(:disabled) {
             <input type="text" id="serial" name="serial" placeholder="機番・製造番号があれば入力してください">
         </div>
 
-        <!-- 故障内容 -->
         <div class="card">
             <h2 class="section-title">3. 故障内容</h2>
 
@@ -321,51 +318,50 @@ button:hover:not(:disabled) {
 
             <div class="checkbox-group" id="issueGroup">
                 <label class="check-item">
-                    <input type="checkbox" name="issue_check" value="電源が入らない">
+                    <input type="checkbox" name="issueCheck" value="電源が入らない">
                     電源が入らない
                 </label>
 
                 <label class="check-item">
-                    <input type="checkbox" name="issue_check" value="動作しない">
+                    <input type="checkbox" name="issueCheck" value="動作しない">
                     動作しない
                 </label>
 
                 <label class="check-item">
-                    <input type="checkbox" name="issue_check" value="異音がする">
+                    <input type="checkbox" name="issueCheck" value="異音がする">
                     異音がする
                 </label>
 
                 <label class="check-item">
-                    <input type="checkbox" name="issue_check" value="充電できない">
+                    <input type="checkbox" name="issueCheck" value="充電できない">
                     充電できない
                 </label>
 
                 <label class="check-item">
-                    <input type="checkbox" name="issue_check" value="エア漏れ">
+                    <input type="checkbox" name="issueCheck" value="エア漏れ">
                     エア漏れ
                 </label>
 
                 <label class="check-item">
-                    <input type="checkbox" name="issue_check" value="破損している">
+                    <input type="checkbox" name="issueCheck" value="破損している">
                     破損している
                 </label>
 
                 <label class="check-item">
-                    <input type="checkbox" id="issueOtherCheck" name="issue_check" value="その他">
+                    <input type="checkbox" id="issueOtherCheck" name="issueCheck" value="その他">
                     その他
                 </label>
             </div>
 
             <div id="issueOtherBox" class="hidden">
                 <label>その他の故障内容</label>
-                <input type="text" id="issue_other" name="issue_other" placeholder="故障内容を入力してください">
+                <input type="text" id="issueOther" name="issueOther" placeholder="故障内容を入力してください">
             </div>
 
             <label>その他症状</label>
-            <textarea id="symptom_other" name="symptom_other" placeholder="症状の詳細、発生タイミングなどがあれば入力してください"></textarea>
+            <textarea id="symptomOther" name="symptomOther" placeholder="症状の詳細、発生タイミングなどがあれば入力してください"></textarea>
         </div>
 
-        <!-- 受け渡し方法 -->
         <div class="card">
             <h2 class="section-title">4. 受け渡し方法</h2>
 
@@ -395,7 +391,6 @@ button:hover:not(:disabled) {
             </p>
         </div>
 
-        <!-- 集荷情報 -->
         <div class="card hidden" id="pickupInfoCard">
             <h2 class="section-title">5. 集荷情報</h2>
 
@@ -419,7 +414,6 @@ button:hover:not(:disabled) {
             </select>
         </div>
 
-        <!-- クーポン・規約 -->
         <div class="card">
             <h2 class="section-title">6. クーポン・利用規約</h2>
 
@@ -450,9 +444,10 @@ button:hover:not(:disabled) {
 <script>
 let userId = "";
 
-const LIFF_ID = "2009322369-Om7WRQAU";
+const LIFFID = "2009322369-Om7WRQAU";
+const bar = String.fromCharCode(95);
 
-const STORE_INFO_HTML = `
+const storeInfoHtml = `
 <div class="store-box">
 <strong>国本刃物 上中野店</strong><br>
 〒700-0972<br>
@@ -467,7 +462,7 @@ window.onload = async function () {
 
     try {
         await liff.init({
-            liffId: LIFF_ID,
+            liffId: LIFFID,
             withLoginOnExternalBrowser: true
         });
 
@@ -502,11 +497,9 @@ window.onload = async function () {
     }
 };
 
-
-// メーカー その他表示
 document.getElementById("maker").addEventListener("change", function () {
     const box = document.getElementById("makerOtherBox");
-    const input = document.getElementById("maker_other");
+    const input = document.getElementById("makerOther");
 
     if (this.value === "その他") {
         box.classList.remove("hidden");
@@ -518,11 +511,9 @@ document.getElementById("maker").addEventListener("change", function () {
     }
 });
 
-
-// 故障内容 その他表示
 document.getElementById("issueOtherCheck").addEventListener("change", function () {
     const box = document.getElementById("issueOtherBox");
-    const input = document.getElementById("issue_other");
+    const input = document.getElementById("issueOther");
 
     if (this.checked) {
         box.classList.remove("hidden");
@@ -534,8 +525,6 @@ document.getElementById("issueOtherCheck").addEventListener("change", function (
     }
 });
 
-
-// 受け渡し方法ボタン
 document.querySelectorAll(".method-card").forEach(card => {
     card.addEventListener("click", function () {
         document.querySelectorAll(".method-card").forEach(c => c.classList.remove("active"));
@@ -570,15 +559,11 @@ document.querySelectorAll(".method-card").forEach(card => {
     });
 });
 
-
-// 故障内容取得
 function getSelectedIssues() {
-    const checked = Array.from(document.querySelectorAll('input[name="issue_check"]:checked'));
+    const checked = Array.from(document.querySelectorAll('input[name="issueCheck"]:checked'));
     return checked.map(item => item.value);
 }
 
-
-// バリデーション
 function validateForm() {
     const issues = getSelectedIssues();
 
@@ -602,8 +587,6 @@ function validateForm() {
     return true;
 }
 
-
-// 送信処理
 document.getElementById("repairForm").addEventListener("submit", async function (e) {
     e.preventDefault();
 
@@ -623,35 +606,35 @@ document.getElementById("repairForm").addEventListener("submit", async function 
         const method = document.getElementById("uketorihouhou").value;
 
         let maker = document.getElementById("maker").value;
-        const makerOther = document.getElementById("maker_other").value.trim();
+        const makerOther = document.getElementById("makerOther").value.trim();
 
         if (maker === "その他" && makerOther) {
             maker = makerOther;
         }
 
-        const data = {
-            line_user_id: userId,
+        const data = {};
 
-            name: document.getElementById("name").value.trim(),
-            phone: document.getElementById("phone").value.trim(),
+        data["line" + bar + "user" + bar + "id"] = userId;
 
-            maker: maker,
-            maker_other: makerOther,
-            model: document.getElementById("model").value.trim(),
-            serial: document.getElementById("serial").value.trim(),
+        data.name = document.getElementById("name").value.trim();
+        data.phone = document.getElementById("phone").value.trim();
 
-            issue: selectedIssues.join("、"),
-            issue_other: document.getElementById("issue_other").value.trim(),
-            symptom_other: document.getElementById("symptom_other").value.trim(),
+        data.maker = maker;
+        data["maker" + bar + "other"] = makerOther;
+        data.model = document.getElementById("model").value.trim();
+        data.serial = document.getElementById("serial").value.trim();
 
-            uketorihouhou: method,
-            shukajusho: document.getElementById("shukajusho").value.trim(),
-            shukakiboubi: document.getElementById("shukakiboubi").value,
-            shukakiboujikan: document.getElementById("shukakiboujikan").value,
+        data.issue = selectedIssues.join("、");
+        data["issue" + bar + "other"] = document.getElementById("issueOther").value.trim();
+        data["symptom" + bar + "other"] = document.getElementById("symptomOther").value.trim();
 
-            coupon: document.getElementById("coupon").value.trim(),
-            kiyakuagree: document.getElementById("kiyakuagree").checked ? "同意済み" : ""
-        };
+        data.uketorihouhou = method;
+        data.shukajusho = document.getElementById("shukajusho").value.trim();
+        data.shukakiboubi = document.getElementById("shukakiboubi").value;
+        data.shukakiboujikan = document.getElementById("shukakiboujikan").value;
+
+        data.coupon = document.getElementById("coupon").value.trim();
+        data.kiyakuagree = document.getElementById("kiyakuagree").checked ? "同意済み" : "";
 
         console.log("送信データ:", data);
 
@@ -678,7 +661,7 @@ document.getElementById("repairForm").addEventListener("submit", async function 
                 <div class="success-box">
                     <strong>✅ 受付完了しました。</strong><br><br>
                     修理品は下記店舗までお持ち込みください。
-                    ${STORE_INFO_HTML}
+                    ${storeInfoHtml}
                 </div>
             `;
         } else if (method === "集荷依頼・LINEで位置情報を送る") {
@@ -737,4 +720,3 @@ document.getElementById("repairForm").addEventListener("submit", async function 
 </script>
 
 </body>
-</html>
