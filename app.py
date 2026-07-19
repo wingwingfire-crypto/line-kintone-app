@@ -17,6 +17,7 @@ KINTONE_APP_ID = 6
 # ===== LINE設定 =====
 LINE_TOKEN = os.environ.get("LINE_TOKEN")
 LINE_URL = "https://api.line.me/v2/bot/message/push"
+LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
 
 # ===== 日本時間 =====
 JST = timezone(timedelta(hours=9))
@@ -71,6 +72,25 @@ def send_line_message(user_id, text):
     res = requests.post(LINE_URL, headers=headers, json=data)
     print("LINE送信:", res.text)
 
+# ===== LINE返信 =====
+def reply_line_message(reply_token, text):
+    headers = {
+        "Authorization": f"Bearer {LINE_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "replyToken": reply_token,
+        "messages": [
+            {
+                "type": "text",
+                "text": text
+            }
+        ]
+    }
+
+    res = requests.post(LINE_REPLY_URL, headers=headers, json=data)
+    print("LINE返信:", res.text)
 
 # ===== フォーム表示 =====
 @app.route("/form", methods=["GET"])
@@ -410,3 +430,235 @@ https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
     except Exception as e:
         print("通知エラー:", e)
         return "通知処理エラー"
+
+# ===== LINE Webhook：問い合わせ受付 =====
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    try:
+        body = request.json
+        print("Webhook受信:", body)
+
+        events = body.get("events", [])
+
+        for event in events:
+            event_type = event.get("type")
+
+            # メッセージ以外は無視
+            if event_type != "message":
+                continue
+
+            message = event.get("message", {})
+            message_type = message.get("type")
+
+            # テキスト以外は無視
+            if message_type != "text":
+                continue
+
+            user_message = message.get("text", "").strip()
+            reply_token = event.get("replyToken")
+            user_id = event.get("source", {}).get("userId")
+
+            print("受信メッセージ:", user_message)
+            print("受信userId:", user_id)
+
+            # 「修理問い合わせ」だけ反応
+            if user_message not in ["修理問い合わせ", "問い合わせ", "状況確認"]:
+                reply_line_message(
+                    reply_token,
+                    "修理状況を確認する場合は「修理問い合わせ」と送信してください。"
+                )
+                continue
+
+            # ===== Kintoneから最新レコード取得 =====
+            headers = {
+                "X-Cybozu-API-Token": KINTONE_API_TOKEN
+            }
+
+            query = f'lineid = "{user_id}" order by $id desc limit 1'
+
+            params = {
+                "app": KINTONE_APP_ID,
+                "query": query
+            }
+
+            res = requests.get(
+                KINTONE_GET_URL,
+                headers=headers,
+                params=params
+            )
+
+            print("問い合わせKintone取得ステータス:", res.status_code)
+            print("問い合わせKintone取得本文:", res.text)
+
+            result = res.json()
+
+            if "records" not in result or len(result["records"]) == 0:
+                reply_line_message(
+                    reply_token,
+                    "現在、修理受付情報が見つかりませんでした。"
+                )
+                continue
+
+            record = result["records"][0]
+
+            # ===== 必要情報取得 =====
+            name = get_value(record, "customer_name", "")
+            maker = get_value(record, "maker", "")
+            model = get_value(record, "model", "")
+            serial = get_value(record, "serial", "")
+            issue = get_value(record, "issue", "")
+
+            status_jp = get_value(record, "ドロップダウン", "").strip()
+
+            mitsumorikingaku = get_value(record, "mitsumorikingaku", "")
+            mitsumorinaiyo = get_value(record, "mitsumorinaiyo", "")
+            kanryoyoteibi = get_value(record, "kanryoyoteibi", "")
+
+            price_text = format_price(mitsumorikingaku)
+            date_text = format_date(kanryoyoteibi)
+
+            # ===== 進捗ごとの問い合わせ返信 =====
+            if status_jp in ["⚪修理受付中", "📩集荷依頼済", "🚚荷受待(店舗持込待ち)"]:
+                reply_message = f"""{name}様
+
+現在の修理状況は
+
+【受付完了・修理品荷受け待ち】
+
+です。
+
+修理品の到着、または確認作業をお待ちしております。
+"""
+
+            elif status_jp == "🟡見積中":
+                reply_message = f"""{name}様
+
+現在の修理状況は
+
+【見積中】
+
+です。
+
+ただいま修理内容を確認し、お見積りを作成しております。
+もうしばらくお待ちください。
+"""
+
+            elif status_jp == "📄見積提出済":
+                reply_message = f"""{name}様
+
+現在の修理状況は
+
+【見積提出済】
+
+です。
+
+■ 修理品情報
+メーカー：{maker}
+型番：{model}
+機番：{serial}
+
+■ お見積り金額
+{price_text}
+
+■ お見積り内容
+{mitsumorinaiyo if mitsumorinaiyo else "未入力"}
+
+■ 修理完了予定日
+{date_text}
+
+修理を進めるか、キャンセルされるかをご確認ください。
+"""
+
+            elif status_jp == "📦受注(部品待ち)":
+                reply_message = f"""{name}様
+
+現在の修理状況は
+
+【受注・部品待ち】
+
+です。
+
+現在、修理作業または部品手配を進めております。
+
+■ 修理完了予定日
+{date_text}
+"""
+
+            elif status_jp == "✅修理完了連絡済":
+                reply_message = f"""{name}様
+
+現在の修理状況は
+
+【修理完了】
+
+です。
+
+修理が完了しております。
+お手すきの際にご来店をお願いいたします。
+
+■ 修理金額
+{price_text}
+"""
+
+            elif status_jp == "🚚発送完了":
+                okurijobango = get_value(record, "okurijobango", "")
+
+                reply_message = f"""{name}様
+
+現在の修理状況は
+
+【発送完了】
+
+です。
+
+修理品は発送済みです。
+
+■ 送り状番号
+{okurijobango if okurijobango else "未入力"}
+
+配送状況はこちらからご確認ください。
+https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
+"""
+
+            elif status_jp == "🔴中止(返却)":
+                reply_message = f"""{name}様
+
+現在の修理状況は
+
+【中止・返却】
+
+です。
+
+修理は中止となり、返却対応となります。
+"""
+
+            elif status_jp == "❌中止(処分)":
+                reply_message = f"""{name}様
+
+現在の修理状況は
+
+【中止・処分】
+
+です。
+
+修理は中止となり、処分対応となります。
+"""
+
+            else:
+                reply_message = f"""{name}様
+
+現在の修理状況は
+
+【{status_jp}】
+
+です。
+"""
+
+            # ===== LINEに返信 =====
+            reply_line_message(reply_token, reply_message)
+
+        return "OK"
+
+    except Exception as e:
+        print("Webhookエラー:", e)
+        return "OK"
