@@ -38,7 +38,7 @@ def send_line_message(user_id, text):
 
 
 # ===== フォーム =====
-@.route("/form", methods=["GET"])
+@app.route("/form", methods=["GET"])
 def form():
     return send_from_directory(".", "form.html")
 
