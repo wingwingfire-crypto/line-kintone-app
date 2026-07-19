@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 app = Flask(__name__)
 
 # ===== Kintone設定 =====
-KINTONE_BASE = "https://2r2ofcviuff.cybozu.com"
+KINTONE_BASE = "https://2r2oficviuff.cybozu.com"
 KINTONE_RECORD_URL = KINTONE_BASE + "/k/v1/record.json"
 KINTONE_GET_URL = KINTONE_BASE + "/k/v1/records.json"
 KINTONE_API_TOKEN = os.environ.get("KINTONE_API_TOKEN")
