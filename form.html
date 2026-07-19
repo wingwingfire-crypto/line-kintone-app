@@ -85,30 +85,7 @@ let userId = "";
 
 window.onload = async () => {
 
-    try {
-
-        await liff.init({
-            liffId: "2009322369-Om7WRQAU"
-        });
-
-        if (!liff.isLoggedIn()) {
-            liff.login();
-            return;
-        }
-
-        const profile = await liff.getProfile();
-
-        userId = profile.userId;
-
-        console.log("LINE User ID:", userId);
-
-    } catch (err) {
-
-        console.error(err);
-
-        alert("LIFF初期化エラー\n" + err);
-
-    }
+    userId = "TEST_USER";
 
 };
 
