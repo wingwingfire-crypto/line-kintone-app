@@ -85,7 +85,8 @@ let userId = "";
 
 window.onload = async () => {
 
-    userId = "TEST_USER";
+const profile = await liff.getProfile();
+userId = profile.userId;
 
 };
 
