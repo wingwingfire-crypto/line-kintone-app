@@ -56,7 +56,7 @@ def submit():
         issue = data.get("issue", "")
         line_user_id = data.get("line_user_id", "")
 
-        notify_url = f"https://line-kintone-.onrender.com/notify?user={line_user_id}"
+        notify_url = f"https://line-kintone-app.onrender.com/notify?user={line_user_id}"
 
         record = {
             "app": 6,
