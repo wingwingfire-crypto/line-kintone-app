@@ -6,17 +6,50 @@ from datetime import datetime, timedelta, timezone
 app = Flask(__name__)
 
 # ===== Kintone設定 =====
-KINTONE_BASE = "https://2r2oficviuff.cybozu.com"
+KINTONE_BASE = "https://2r2ofcviuff.cybozu.com"
 KINTONE_RECORD_URL = KINTONE_BASE + "/k/v1/record.json"
 KINTONE_GET_URL = KINTONE_BASE + "/k/v1/records.json"
 KINTONE_API_TOKEN = os.environ.get("KINTONE_API_TOKEN")
 
+# 新しいKintoneのアプリ番号
+KINTONE_APP_ID = 6
+
 # ===== LINE設定 =====
-LINE_TOKEN = "oX7OXZ7IrZen3CMFYM7oFN0r6N6x/+wmC/LhAC3sm/v7VZoe3eK0AmvJ9pj97+wxohqrnFdgY1IzItZ5i1vqxbKmMc4Uh51bRAZQ6XNziPb1TD2giBBURVAslvv6uxN6vUIpXogs9N4s+2Ex0ScmnwdB04t89/1O/w1cDnyilFU="
+LINE_TOKEN = os.environ.get("LINE_TOKEN")
 LINE_URL = "https://api.line.me/v2/bot/message/push"
 
 # ===== 日本時間 =====
 JST = timezone(timedelta(hours=9))
+
+
+# ===== 共通：Kintone値取得 =====
+def get_value(record, field_code, default=""):
+    try:
+        value = record.get(field_code, {}).get("value", default)
+        if value is None:
+            return default
+        return value
+    except Exception:
+        return default
+
+
+# ===== 共通：金額表示 =====
+def format_price(value):
+    if value is None or value == "":
+        return "未入力"
+
+    try:
+        return f"{int(float(value)):,}円"
+    except Exception:
+        return str(value) + "円"
+
+
+# ===== 共通：日付表示 =====
+def format_date(value):
+    if value is None or value == "":
+        return "未入力"
+
+    return value
 
 
 # ===== LINE送信 =====
@@ -37,7 +70,7 @@ def send_line_message(user_id, text):
     print("LINE送信:", res.text)
 
 
-# ===== フォーム =====
+# ===== フォーム表示 =====
 @app.route("/form", methods=["GET"])
 def form():
     return send_from_directory(".", "form.html")
@@ -59,7 +92,7 @@ def submit():
         notify_url = f"https://line-kintone-app.onrender.com/notify?user={line_user_id}"
 
         record = {
-            "app": 6,
+            "app": KINTONE_APP_ID,
             "record": {
                 "customer_name": {"value": name},
                 "phone": {"value": phone},
@@ -79,7 +112,8 @@ def submit():
         res = requests.post(KINTONE_RECORD_URL, headers=headers, json=record)
         print("Kintone登録:", res.text)
 
-        send_line_message(line_user_id, "📩 修理受付を受け付けました。")
+        if line_user_id:
+            send_line_message(line_user_id, "📩 修理受付を受け付けました。")
 
         return {"status": "ok"}
 
@@ -96,8 +130,8 @@ def notify():
     print("受信user:", user_id)
 
     try:
-        # ===== レコード取得 =====
-        url = f'{KINTONE_GET_URL}?app=6&query=lineid="{user_id}" order by $id desc limit 1'
+        # ===== 最新レコード取得 =====
+        url = f'{KINTONE_GET_URL}?app={KINTONE_APP_ID}&query=lineid="{user_id}" order by $id desc limit 1'
 
         headers = {
             "X-Cybozu-API-Token": KINTONE_API_TOKEN
@@ -113,13 +147,26 @@ def notify():
 
         # ===== 基本情報 =====
         record_id = record["$id"]["value"]
-        name = record["customer_name"]["value"]
 
-        # ✅ ステータス取得（ズレ防止）
-        status_jp = record["ドロップダウン"]["value"].strip()
+        name = get_value(record, "customer_name", "")
+        maker = get_value(record, "maker", "")
+        model = get_value(record, "model", "")
+        serial = get_value(record, "serial", "")
+        issue = get_value(record, "issue", "")
+
+        # ===== 見積情報 =====
+        mitsumorikingaku = get_value(record, "mitsumorikingaku", "")
+        mitsumorinaiyo = get_value(record, "mitsumorinaiyo", "")
+        kanryoyoteibi = get_value(record, "kanryoyoteibi", "")
+
+        price_text = format_price(mitsumorikingaku)
+        date_text = format_date(kanryoyoteibi)
+
+        # ===== 日本語ステータス取得 =====
+        status_jp = get_value(record, "ドロップダウン", "").strip()
         print("取得ステータス:", status_jp)
 
-        # ===== マップ（Kintoneと完全一致させる）=====
+        # ===== ステータスマップ =====
         status_map = {
             "⚪修理受付中": "received",
             "📩集荷依頼済": "pickup_requested",
@@ -134,11 +181,13 @@ def notify():
         statuscode = status_map.get(status_jp, "unknown")
         print("変換後:", statuscode)
 
-        # ===== メッセージ =====
+        # ===== メッセージ作成 =====
         if statuscode == "received":
             message = f"""{name}様
 
 【修理受付中】
+
+この度は修理のご依頼ありがとうございます。
 
 順次対応しております。
 今しばらくお待ちください。
@@ -150,7 +199,7 @@ def notify():
 【集荷依頼済】
 
 集荷手配が完了しております。
-到着までお待ちください。
+出荷の準備をしてお待ちください。
 """
 
         elif statuscode == "waiting_arrival":
@@ -158,7 +207,8 @@ def notify():
 
 【荷受待】
 
-端末の到着をお待ちしております。
+修理品の到着をお待ちしております。
+到着次第、確認を進めさせていただきます。
 """
 
         elif statuscode == "estimating":
@@ -166,48 +216,75 @@ def notify():
 
 【見積中】
 
-現在お見積りを作成しております。
+現在お預かり品の状態を確認し、
+お見積りを作成しております。
+
 もうしばらくお待ちください。
 """
 
         elif statuscode == "quoted":
             message = f"""{name}様
 
-【見積提示済】
+【見積提出済】
 
-お見積りが完了しております。
+お預かりしている修理品のお見積りが完了しました。
+
+■ 修理品情報
+メーカー：{maker}
+型番：{model}
+機番：{serial}
+
+■ 故障内容
+{issue}
+
+■ お見積り金額
+{price_text}
+
+■ お見積り内容
+{mitsumorinaiyo if mitsumorinaiyo else "未入力"}
+
+■ 修理完了予定日
+{date_text}
+
 内容をご確認ください。
+修理を進めるか、キャンセルされるかにつきましては、担当者までご連絡ください。
 """
 
         elif statuscode == "waiting_parts":
             message = f"""{name}様
 
-【部品待ち】
+【受注・部品待ち】
 
-部品の手配を行っております。
-入荷までお待ちください。
+修理のご依頼を承りました。
+
+現在、必要部品を手配しております。
+部品入荷後、修理作業を進めさせていただきます。
+
+■ 修理完了予定日
+{date_text}
 """
 
         elif statuscode == "cancel_return":
             message = f"""{name}様
 
-【修理中止（返却）】
+【中止（返却）】
 
-修理不可のため返却となります。
-詳細は別途ご案内いたします。
+修理は中止となり、返却対応となります。
+
+詳細につきましては、別途ご案内いたします。
 """
 
         elif statuscode == "cancel_disposal":
             message = f"""{name}様
 
-【修理中止（処分）】
+【中止（処分）】
 
-修理不可のため処分対応となります。
+修理は中止となり、処分対応となります。
+
 何卒ご了承ください。
 """
 
         else:
-            # 👇 デバッグしやすくする
             message = f"""{name}様
 
 ステータス不一致：
@@ -220,11 +297,9 @@ def notify():
         # ===== 日本時間 =====
         now_time = datetime.now(JST).strftime("%Y-%m-%dT%H:%M:%S%z")
 
-        # ===== Kintone更新 =====
-        update_url = KINTONE_BASE + "/k/v1/record.json"
-
+        # ===== Kintoneへ通知履歴保存 =====
         update_data = {
-            "app": 6,
+            "app": KINTONE_APP_ID,
             "id": record_id,
             "record": {
                 "lastnotify": {"value": now_time},
@@ -237,7 +312,7 @@ def notify():
             "Content-Type": "application/json"
         }
 
-        res = requests.put(update_url, headers=update_headers, json=update_data)
+        res = requests.put(KINTONE_RECORD_URL, headers=update_headers, json=update_data)
         print("履歴更新:", res.text)
 
         return f"送信完了: {status_jp}"
