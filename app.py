@@ -251,6 +251,62 @@ def update_cancel_action(record_id, cancel_text):
     print("キャンセル後対応更新:", res.text)
 
 
+# ===== Kintone：位置情報を保存 =====
+def update_location_info(record_id, shukabasho, ido, keido, mapurl):
+    headers = {
+        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "app": KINTONE_APP_ID,
+        "id": record_id,
+        "record": {
+            "shukabasho": {
+                "value": shukabasho
+            },
+            "ido": {
+                "value": str(ido)
+            },
+            "keido": {
+                "value": str(keido)
+            },
+            "mapurl": {
+                "value": mapurl
+            }
+        }
+    }
+
+    res = requests.put(
+        KINTONE_RECORD_URL,
+        headers=headers,
+        json=data
+    )
+
+    print("位置情報更新:", res.text)
+
+
+# ===== 位置情報保存対象レコードを取得 =====
+def get_latest_active_record(user_id):
+    records = get_records_by_user(user_id)
+
+    if len(records) == 0:
+        return None
+
+    closed_statuses = [
+        "●完了(精算済)",
+        "🔴中止(返却)",
+        "❌中止(処分)"
+    ]
+
+    for record in records:
+        status = get_value(record, "ドロップダウン", "").strip()
+        if status not in closed_statuses:
+            return record
+
+    return records[0]
+
+
 # ===== 問い合わせ返信文作成 =====
 def build_status_message(record):
     name = get_value(record, "customer_name", "")
@@ -265,6 +321,8 @@ def build_status_message(record):
     mitsumorinaiyo = get_value(record, "mitsumorinaiyo", "")
     kanryoyoteibi = get_value(record, "kanryoyoteibi", "")
     okurijobango = get_value(record, "okurijobango", "")
+    shukabasho = get_value(record, "shukabasho", "")
+    mapurl = get_value(record, "mapurl", "")
 
     price_text = format_price(mitsumorikingaku)
     date_text = format_date(kanryoyoteibi)
@@ -285,6 +343,12 @@ def build_status_message(record):
 【受付完了・修理品荷受け待ち】
 
 修理品の到着、または確認作業をお待ちしております。
+
+■ 集荷場所
+{shukabasho if shukabasho else "未登録"}
+
+■ 地図URL
+{mapurl if mapurl else "未登録"}
 """
 
     elif status_jp == "🟡見積中":
@@ -775,7 +839,7 @@ https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
         return "通知処理エラー"
 
 
-# ===== LINE Webhook：問い合わせ・複数台対応・修理可否回答・キャンセル後対応 =====
+# ===== LINE Webhook：問い合わせ・複数台対応・修理可否回答・キャンセル後対応・位置情報 =====
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
@@ -789,6 +853,7 @@ def webhook():
             reply_token = event.get("replyToken")
             user_id = event.get("source", {}).get("userId")
 
+            # ===== ボタン選択された場合 =====
             if event_type == "postback":
                 postback_data = event.get("postback", {}).get("data", "")
                 postback_data = html.unescape(postback_data)
@@ -799,7 +864,6 @@ def webhook():
                 action = parsed.get("action", [""])[0]
                 record_id = parsed.get("record_id", [""])[0]
 
-                # ===== 複数台問い合わせ：選択された修理品の状況を返す =====
                 if action == "check_status" and record_id:
                     record = get_record_by_id(record_id)
 
@@ -814,7 +878,6 @@ def webhook():
                     reply_line_message(reply_token, reply_message)
                     continue
 
-                # ===== 修理を依頼する =====
                 if action == "repair_accept" and record_id:
                     update_repair_answer(record_id, "修理する")
 
@@ -845,7 +908,6 @@ def webhook():
                     reply_line_message(reply_token, reply_message)
                     continue
 
-                # ===== キャンセルする =====
                 if action == "repair_cancel" and record_id:
                     update_repair_answer(record_id, "キャンセル")
 
@@ -896,7 +958,6 @@ def webhook():
                     reply_line_message(reply_token, reply_message, quick_reply_items)
                     continue
 
-                # ===== キャンセル後：店舗引取 =====
                 if action == "cancel_pickup" and record_id:
                     update_cancel_action(record_id, "店舗引取")
 
@@ -929,7 +990,6 @@ def webhook():
                     reply_line_message(reply_token, reply_message)
                     continue
 
-                # ===== キャンセル後：処分 =====
                 if action == "cancel_disposal" and record_id:
                     update_cancel_action(record_id, "処分")
 
@@ -960,13 +1020,78 @@ def webhook():
                     reply_line_message(reply_token, reply_message)
                     continue
 
-            # ===== テキストメッセージの場合 =====
+            # ===== メッセージの場合 =====
             if event_type != "message":
                 continue
 
             message = event.get("message", {})
             message_type = message.get("type")
 
+            # ===== 位置情報メッセージの場合 =====
+            if message_type == "location":
+                title = message.get("title", "")
+                address = message.get("address", "")
+                latitude = message.get("latitude", "")
+                longitude = message.get("longitude", "")
+
+                print("位置情報受信 title:", title)
+                print("位置情報受信 address:", address)
+                print("位置情報受信 latitude:", latitude)
+                print("位置情報受信 longitude:", longitude)
+
+                record = get_latest_active_record(user_id)
+
+                if not record:
+                    reply_line_message(
+                        reply_token,
+                        "修理受付情報が見つかりませんでした。先に修理受付フォームをご入力ください。"
+                    )
+                    continue
+
+                record_id = get_value(record, "$id", "")
+                maker = get_value(record, "maker", "")
+                model = get_value(record, "model", "")
+                serial = get_value(record, "serial", "")
+
+                mapurl = f"https://www.google.com/maps?q={latitude},{longitude}"
+
+                if title and address:
+                    shukabasho = f"{title}\n{address}"
+                elif address:
+                    shukabasho = address
+                elif title:
+                    shukabasho = title
+                else:
+                    shukabasho = "位置情報"
+
+                update_location_info(
+                    record_id,
+                    shukabasho,
+                    latitude,
+                    longitude,
+                    mapurl
+                )
+
+                reply_message = f"""【位置情報受付完了】
+
+集荷場所を受け付けました。
+
+■ 修理品情報
+メーカー：{maker}
+型番：{model}
+機番：{serial}
+
+■ 集荷場所
+{shukabasho}
+
+■ 地図URL
+{mapurl}
+"""
+
+                reply_line_message(reply_token, reply_message)
+                continue
+
+            # ===== テキストメッセージの場合 =====
             if message_type != "text":
                 continue
 
@@ -978,7 +1103,7 @@ def webhook():
             if user_message not in ["修理問い合わせ", "問い合わせ", "状況確認"]:
                 reply_line_message(
                     reply_token,
-                    "修理状況を確認する場合は「修理問い合わせ」と送信してください。"
+                    "修理状況を確認する場合は「修理問い合わせ」と送信してください。\n集荷場所を送る場合は、LINEの位置情報送信をご利用ください。"
                 )
                 continue
 
