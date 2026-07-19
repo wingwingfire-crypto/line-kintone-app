@@ -220,7 +220,7 @@ def notify():
         status_map = {
             "⚪修理受付中": "received",
             "📩集荷依頼済": "pickup_requested",
-            "🚚荷受待(店舗持込待ち)": "waiting_arrival",
+            "🚶荷受待(店舗持込待ち)": "waiting_arrival",
             "🟡見積中": "estimating",
             "📄見積提出済": "quoted",
             "📦受注(部品待ち)": "waiting_parts",
@@ -518,7 +518,7 @@ def webhook():
             date_text = format_date(kanryoyoteibi)
 
             # ===== 進捗ごとの問い合わせ返信 =====
-            if status_jp in ["⚪修理受付中", "📩集荷依頼済", "🚚荷受待(店舗持込待ち)"]:
+            if status_jp in ["⚪修理受付中", "📩集荷依頼済", "🚶荷受待(店舗持込待ち)"]:
                 reply_message = f"""{name}様
 
 現在の修理状況は
