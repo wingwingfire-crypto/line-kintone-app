@@ -4,34 +4,45 @@
 <meta charset="UTF-8">
 <title>修理受付フォーム</title>
 
-<!-- ✅ LIFF SDK（絶対必要） -->
-<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+.line-scdn.net/liff/edge/2/sdk.js"></script>
 
 <style>
 body {
-  font-family: Arial;
-  background: #f7f7f7;
-  padding: 20px;
+    font-family: Arial, sans-serif;
+    background: #f7f7f7;
+    padding: 20px;
 }
+
 .container {
-  background: white;
-  padding: 20px;
-  border-radius: 10px;
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    max-width: 700px;
+    margin: auto;
 }
-input, textarea {
-  width: 100%;
-  padding: 10px;
-  margin-top: 5px;
-  margin-bottom: 15px;
+
+input,
+textarea {
+    width: 100%;
+    padding: 10px;
+    margin-top: 5px;
+    margin-bottom: 15px;
+    box-sizing: border-box;
 }
+
 button {
-  background: #06c755;
-  color: white;
-  padding: 12px;
-  width: 100%;
-  border: none;
-  font-size: 16px;
-  border-radius: 5px;
+    background: #06c755;
+    color: white;
+    padding: 12px;
+    width: 100%;
+    border: none;
+    font-size: 16px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#msg {
+    margin-top: 20px;
 }
 </style>
 
@@ -40,6 +51,7 @@ button {
 <body>
 
 <div class="container">
+
 <h2>修理受付フォーム</h2>
 
 <form id="form">
@@ -68,50 +80,91 @@ button {
 </div>
 
 <script>
+
 let userId = "";
 
-// ✅ LIFF初期化
-window.onload = async function () {
-  try {
-    await liff.init({ liffId: "2009322369-Om7WRQAU" });
+window.onload = async () => {
 
-    if (!liff.isLoggedIn()) {
-      liff.login();
-      return;
+    try {
+
+        await liff.init({
+            liffId: "2009322369-Om7WRQAU"
+        });
+
+        if (!liff.isLoggedIn()) {
+            liff.login();
+            return;
+        }
+
+        const profile = await liff.getProfile();
+
+        userId = profile.userId;
+
+        console.log("LINE User ID:", userId);
+
+    } catch (err) {
+
+        console.error(err);
+
+        alert("LIFF初期化エラー\n" + err);
+
     }
 
-    const profile = await liff.getProfile();
-    userId = profile.userId;
-
-    console.log("取得userId:", userId);
-
-  } catch (err) {
-    alert("LIFFエラー：" + err);
-  }
 };
 
-// ✅ 送信処理
-document.getElementById("form").onsubmit = async function(e) {
-  e.preventDefault();
 
-  const data = Object.fromEntries(new FormData(this));
+document.getElementById("form").addEventListener("submit", async (e) => {
 
-  // ✅ ここが超重要（今回のゴール）
-  data.line_user_id = userId;
+    e.preventDefault();
 
-  console.log("送信データ:", data);
+    try {
 
-  await fetch("/submit", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(data)
-  });
+        const data = Object.fromEntries(
+            new FormData(document.getElementById("form"))
+        );
 
-  document.getElementById("msg").innerHTML =
-    "<p style='color:green;'>✅ 受付完了しました！</p>";
+        data.line_user_id = userId;
 
-  this.reset();
-};
+        console.log("送信データ", data);
+
+        const response = await fetch("/submit", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.text();
+
+        console.log("サーバ応答", result);
+
+        if (!response.ok) {
+            throw new Error(
+                "HTTP " + response.status + " : " + result
+            );
+        }
+
+        document.getElementById("msg").innerHTML =
+            "<p style='color:green;'>✅ 受付完了しました！</p>";
+
+        document.getElementById("form").reset();
+
+    } catch (err) {
+
+        console.error(err);
+
+        document.getElementById("msg").innerHTML =
+            "<p style='color:red;'>❌ エラー：" +
+            err +
+            "</p>";
+
+        alert("送信エラー\n\n" + err);
+
+    }
+
+});
+
 </script>
 
 </body>
