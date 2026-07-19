@@ -1,43 +1,208 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>修理受付フォーム</title>
 
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
 <style>
-body {
-    font-family: Arial, sans-serif;
-    background: #f7f7f7;
-    padding: 20px;
+:root {
+    --main: #06c755;
+    --main-dark: #04a846;
+    --bg: #f3f6f4;
+    --text: #222;
+    --muted: #666;
+    --border: #ddd;
+    --danger: #e53935;
+    --card: #ffffff;
 }
 
-.container {
-    background: white;
-    padding: 20px;
-    border-radius: 10px;
-    max-width: 700px;
-    margin: auto;
-}
-
-input,
-textarea {
-    width: 100%;
-    padding: 10px;
-    margin-top: 5px;
-    margin-bottom: 15px;
+* {
     box-sizing: border-box;
 }
 
-button {
-    background: #06c755;
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.header {
+    background: linear-gradient(135deg, #06c755, #03a64a);
     color: white;
+    padding: 24px 18px 34px;
+    text-align: center;
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.header p {
+    margin: 8px 0 0;
+    font-size: 14px;
+    opacity: 0.95;
+}
+
+.container {
+    max-width: 760px;
+    margin: -22px auto 40px;
+    padding: 0 14px;
+}
+
+.card {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 14px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+}
+
+.section-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0 0 16px;
+    padding-left: 10px;
+    border-left: 5px solid var(--main);
+}
+
+label {
+    display: block;
+    font-weight: 600;
+    margin: 14px 0 6px;
+}
+
+.required {
+    display: inline-block;
+    background: var(--danger);
+    color: white;
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+input,
+select,
+textarea {
+    width: 100%;
     padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 16px;
+    background: white;
+}
+
+textarea {
+    min-height: 92px;
+    resize: vertical;
+}
+
+.hint {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 5px 0 0;
+    line-height: 1.5;
+}
+
+.hidden {
+    display: none;
+}
+
+.checkbox-group {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.check-item {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 12px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    background: #fff;
+}
+
+.check-item input {
+    width: auto;
+    margin: 0;
+    transform: scale(1.1);
+}
+
+.method-grid {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.method-card {
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    background: #fff;
+    cursor: pointer;
+    transition: 0.15s;
+}
+
+.method-card.active {
+    border-color: var(--main);
+    background: #effdf4;
+    box-shadow: 0 0 0 3px rgba(6,199,85,0.12);
+}
+
+.method-card strong {
+    display: block;
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.method-card span {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.terms-box {
+    border: 1px solid var(--border);
+    background: #fafafa;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 13px;
+    color: #555;
+    line-height: 1.6;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.terms-check {
+    margin-top: 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+}
+
+.terms-check input {
+    width: auto;
+    margin-top: 4px;
+}
+
+button {
     width: 100%;
     border: none;
-    font-size: 16px;
-    border-radius: 5px;
+    border-radius: 12px;
+    padding: 15px;
+    background: var(--main);
+    color: white;
+    font-size: 17px;
+    font-weight: 700;
     cursor: pointer;
 }
 
@@ -46,57 +211,263 @@ button:disabled {
     cursor: not-allowed;
 }
 
+button:hover:not(:disabled) {
+    background: var(--main-dark);
+}
+
+#liffStatus {
+    font-size: 13px;
+    color: #555;
+    text-align: center;
+    margin-bottom: 12px;
+}
+
 #msg {
-    margin-top: 20px;
+    margin-top: 16px;
+}
+
+.success-box {
+    background: #effdf4;
+    border: 1px solid #9be7b6;
+    color: #116530;
+    border-radius: 14px;
+    padding: 16px;
+    line-height: 1.65;
+}
+
+.error-box {
+    background: #fff2f2;
+    border: 1px solid #ffb7b7;
+    color: #b00020;
+    border-radius: 14px;
+    padding: 16px;
+    line-height: 1.65;
+}
+
+.store-box {
+    background: #f7f9ff;
+    border: 1px solid #cbd8ff;
+    border-radius: 12px;
+    padding: 12px;
+    margin-top: 12px;
+    color: #24345f;
+}
+
+@media (min-width: 720px) {
+    .method-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
 }
 </style>
-
 </head>
 
 <body>
 
+<div class="header">
+    <h1>修理受付フォーム</h1>
+    <p>修理品の情報をご入力ください</p>
+</div>
+
 <div class="container">
 
-<h2>修理受付フォーム</h2>
+    <div id="liffStatus">LINE連携を確認中です...</div>
 
-<p id="liffStatus" style="color:#555;">LINE連携を確認中です...</p>
+    <form id="repairForm">
 
-<form id="form">
+        <!-- お客様情報 -->
+        <div class="card">
+            <h2 class="section-title">1. お客様情報</h2>
 
-<label>お名前</label>
-<input type="text" name="name" required>
+            <label>お名前 <span class="required">必須</span></label>
+            <input type="text" id="name" name="name" placeholder="例：山田 太郎" required>
 
-<label>電話番号</label>
-<input type="text" name="phone" required>
+            <label>電話番号 <span class="required">必須</span></label>
+            <input type="tel" id="phone" name="phone" placeholder="例：09012345678" required>
+            <p class="hint">ハイフンあり・なし、どちらでも入力できます。</p>
+        </div>
 
-<label>メーカー</label>
-<input type="text" name="maker">
+        <!-- 修理品情報 -->
+        <div class="card">
+            <h2 class="section-title">2. 修理品情報</h2>
 
-<label>型番</label>
-<input type="text" name="model">
+            <label>メーカー名 <span class="required">必須</span></label>
+            <select id="maker" name="maker" required>
+                <option value="">選択してください</option>
+                <option value="マキタ">マキタ</option>
+                <option value="HiKOKI">HiKOKI</option>
+                <option value="MAX">MAX</option>
+                <option value="パナソニック">パナソニック</option>
+                <option value="リョービ">リョービ</option>
+                <option value="その他">その他</option>
+            </select>
 
-<label>故障内容</label>
-<textarea name="issue"></textarea>
+            <div id="makerOtherBox" class="hidden">
+                <label>その他メーカー名</label>
+                <input type="text" id="maker_other" name="maker_other" placeholder="メーカー名を入力してください">
+            </div>
 
-<button id="submitBtn" type="submit" disabled>送信する</button>
+            <label>型番</label>
+            <input type="text" id="model" name="model" placeholder="例：TD172 / HN-65N4">
 
-</form>
+            <label>機番</label>
+            <input type="text" id="serial" name="serial" placeholder="機番・製造番号があれば入力してください">
+        </div>
 
-<div id="msg"></div>
+        <!-- 故障内容 -->
+        <div class="card">
+            <h2 class="section-title">3. 故障内容</h2>
 
+            <label>故障内容 <span class="required">必須</span></label>
+
+            <div class="checkbox-group" id="issueGroup">
+                <label class="check-item">
+                    <input type="checkbox" name="issue_check" value="電源が入らない">
+                    電源が入らない
+                </label>
+
+                <label class="check-item">
+                    <input type="checkbox" name="issue_check" value="動作しない">
+                    動作しない
+                </label>
+
+                <label class="check-item">
+                    <input type="checkbox" name="issue_check" value="異音がする">
+                    異音がする
+                </label>
+
+                <label class="check-item">
+                    <input type="checkbox" name="issue_check" value="充電できない">
+                    充電できない
+                </label>
+
+                <label class="check-item">
+                    <input type="checkbox" name="issue_check" value="エア漏れ">
+                    エア漏れ
+                </label>
+
+                <label class="check-item">
+                    <input type="checkbox" name="issue_check" value="破損している">
+                    破損している
+                </label>
+
+                <label class="check-item">
+                    <input type="checkbox" id="issueOtherCheck" name="issue_check" value="その他">
+                    その他
+                </label>
+            </div>
+
+            <div id="issueOtherBox" class="hidden">
+                <label>その他の故障内容</label>
+                <input type="text" id="issue_other" name="issue_other" placeholder="故障内容を入力してください">
+            </div>
+
+            <label>その他症状</label>
+            <textarea id="symptom_other" name="symptom_other" placeholder="症状の詳細、発生タイミングなどがあれば入力してください"></textarea>
+        </div>
+
+        <!-- 受け渡し方法 -->
+        <div class="card">
+            <h2 class="section-title">4. 受け渡し方法</h2>
+
+            <label>受け渡し方法 <span class="required">必須</span></label>
+
+            <input type="hidden" id="uketorihouhou" name="uketorihouhou" required>
+
+            <div class="method-grid">
+                <div class="method-card" data-method="店舗持ち込み">
+                    <strong>店舗持ち込み</strong>
+                    <span>お客様が店舗へ修理品をお持ち込み</span>
+                </div>
+
+                <div class="method-card" data-method="集荷依頼・LINEで位置情報を送る">
+                    <strong>集荷依頼・位置情報</strong>
+                    <span>フォーム送信後にLINEで位置情報を送信</span>
+                </div>
+
+                <div class="method-card" data-method="集荷依頼・住所を入力する">
+                    <strong>集荷依頼・住所入力</strong>
+                    <span>集荷住所と希望日時をフォームに入力</span>
+                </div>
+            </div>
+
+            <p class="hint">
+                「LINEで位置情報を送る」を選んだ場合、フォーム送信後にLINEトーク画面から位置情報を送信してください。
+            </p>
+        </div>
+
+        <!-- 集荷情報 -->
+        <div class="card hidden" id="pickupInfoCard">
+            <h2 class="section-title">5. 集荷情報</h2>
+
+            <div id="addressInputBox" class="hidden">
+                <label>集荷住所 <span class="required">必須</span></label>
+                <textarea id="shukajusho" name="shukajusho" placeholder="例：岡山県岡山市北区〇〇 1-2-3"></textarea>
+            </div>
+
+            <label>集荷希望日</label>
+            <input type="date" id="shukakiboubi" name="shukakiboubi">
+
+            <label>集荷希望時間</label>
+            <select id="shukakiboujikan" name="shukakiboujikan">
+                <option value="">選択してください</option>
+                <option value="指定なし">指定なし</option>
+                <option value="午前中">午前中</option>
+                <option value="12時〜14時">12時〜14時</option>
+                <option value="14時〜16時">14時〜16時</option>
+                <option value="16時〜18時">16時〜18時</option>
+                <option value="18時〜20時">18時〜20時</option>
+            </select>
+        </div>
+
+        <!-- クーポン・規約 -->
+        <div class="card">
+            <h2 class="section-title">6. クーポン・利用規約</h2>
+
+            <label>クーポンコード</label>
+            <input type="text" id="coupon" name="coupon" placeholder="クーポンをお持ちの場合は入力してください">
+
+            <label>利用規約</label>
+            <div class="terms-box">
+                修理受付後、状態確認のうえお見積りをご案内いたします。  
+                修理不能やキャンセルの場合、返却・処分方法についてご確認させていただく場合があります。  
+                集荷・配送にかかる費用、キャンセル料等が発生する場合があります。
+            </div>
+
+            <label class="terms-check">
+                <input type="checkbox" id="kiyakuagree" name="kiyakuagree">
+                <span>利用規約に同意します <span class="required">必須</span></span>
+            </label>
+        </div>
+
+        <div class="card">
+            <button type="submit" id="submitBtn" disabled>修理受付を送信する</button>
+            <div id="msg"></div>
+        </div>
+
+    </form>
 </div>
 
 <script>
 let userId = "";
 
-// LIFF初期化
+const LIFF_ID = "2009322369-Om7WRQAU";
+
+const STORE_INFO_HTML = `
+<div class="store-box">
+<strong>国本刃物 上中野店</strong><br>
+〒700-0972<br>
+岡山県岡山市北区上中野2丁目27-12<br>
+電話番号：086-230-6551
+</div>
+`;
+
 window.onload = async function () {
     const submitBtn = document.getElementById("submitBtn");
     const liffStatus = document.getElementById("liffStatus");
 
     try {
         await liff.init({
-            liffId: "2009322369-Om7WRQAU",
+            liffId: LIFF_ID,
             withLoginOnExternalBrowser: true
         });
 
@@ -111,11 +482,11 @@ window.onload = async function () {
         console.log("取得LINE User ID:", userId);
 
         if (userId) {
-            liffStatus.innerHTML = "LINE連携完了";
+            liffStatus.textContent = "LINE連携完了";
             liffStatus.style.color = "green";
             submitBtn.disabled = false;
         } else {
-            liffStatus.innerHTML = "LINEユーザーIDを取得できませんでした";
+            liffStatus.textContent = "LINEユーザーIDを取得できませんでした。LINEアプリから開き直してください。";
             liffStatus.style.color = "red";
             submitBtn.disabled = true;
         }
@@ -123,7 +494,7 @@ window.onload = async function () {
     } catch (err) {
         console.error("LIFF初期化エラー:", err);
 
-        liffStatus.innerHTML = "LIFF初期化エラー：" + err;
+        liffStatus.textContent = "LIFF初期化エラー：" + err;
         liffStatus.style.color = "red";
 
         alert("LIFF初期化エラー\n" + err);
@@ -132,9 +503,111 @@ window.onload = async function () {
 };
 
 
+// メーカー その他表示
+document.getElementById("maker").addEventListener("change", function () {
+    const box = document.getElementById("makerOtherBox");
+    const input = document.getElementById("maker_other");
+
+    if (this.value === "その他") {
+        box.classList.remove("hidden");
+        input.required = true;
+    } else {
+        box.classList.add("hidden");
+        input.required = false;
+        input.value = "";
+    }
+});
+
+
+// 故障内容 その他表示
+document.getElementById("issueOtherCheck").addEventListener("change", function () {
+    const box = document.getElementById("issueOtherBox");
+    const input = document.getElementById("issue_other");
+
+    if (this.checked) {
+        box.classList.remove("hidden");
+        input.required = true;
+    } else {
+        box.classList.add("hidden");
+        input.required = false;
+        input.value = "";
+    }
+});
+
+
+// 受け渡し方法ボタン
+document.querySelectorAll(".method-card").forEach(card => {
+    card.addEventListener("click", function () {
+        document.querySelectorAll(".method-card").forEach(c => c.classList.remove("active"));
+        this.classList.add("active");
+
+        const method = this.dataset.method;
+        document.getElementById("uketorihouhou").value = method;
+
+        const pickupInfoCard = document.getElementById("pickupInfoCard");
+        const addressInputBox = document.getElementById("addressInputBox");
+        const shukajusho = document.getElementById("shukajusho");
+
+        if (method === "店舗持ち込み") {
+            pickupInfoCard.classList.add("hidden");
+            addressInputBox.classList.add("hidden");
+            shukajusho.required = false;
+            shukajusho.value = "";
+        }
+
+        if (method === "集荷依頼・LINEで位置情報を送る") {
+            pickupInfoCard.classList.remove("hidden");
+            addressInputBox.classList.add("hidden");
+            shukajusho.required = false;
+            shukajusho.value = "";
+        }
+
+        if (method === "集荷依頼・住所を入力する") {
+            pickupInfoCard.classList.remove("hidden");
+            addressInputBox.classList.remove("hidden");
+            shukajusho.required = true;
+        }
+    });
+});
+
+
+// 故障内容取得
+function getSelectedIssues() {
+    const checked = Array.from(document.querySelectorAll('input[name="issue_check"]:checked'));
+    return checked.map(item => item.value);
+}
+
+
+// バリデーション
+function validateForm() {
+    const issues = getSelectedIssues();
+
+    if (issues.length === 0) {
+        alert("故障内容を1つ以上選択してください。");
+        return false;
+    }
+
+    const method = document.getElementById("uketorihouhou").value;
+
+    if (!method) {
+        alert("受け渡し方法を選択してください。");
+        return false;
+    }
+
+    if (!document.getElementById("kiyakuagree").checked) {
+        alert("利用規約に同意してください。");
+        return false;
+    }
+
+    return true;
+}
+
+
 // 送信処理
-document.getElementById("form").addEventListener("submit", async function(e) {
+document.getElementById("repairForm").addEventListener("submit", async function (e) {
     e.preventDefault();
+
+    const msg = document.getElementById("msg");
 
     try {
         if (!userId) {
@@ -142,9 +615,43 @@ document.getElementById("form").addEventListener("submit", async function(e) {
             return;
         }
 
-        const data = Object.fromEntries(new FormData(this));
+        if (!validateForm()) {
+            return;
+        }
 
-        data.line_user_id = userId;
+        const selectedIssues = getSelectedIssues();
+        const method = document.getElementById("uketorihouhou").value;
+
+        let maker = document.getElementById("maker").value;
+        const makerOther = document.getElementById("maker_other").value.trim();
+
+        if (maker === "その他" && makerOther) {
+            maker = makerOther;
+        }
+
+        const data = {
+            line_user_id: userId,
+
+            name: document.getElementById("name").value.trim(),
+            phone: document.getElementById("phone").value.trim(),
+
+            maker: maker,
+            maker_other: makerOther,
+            model: document.getElementById("model").value.trim(),
+            serial: document.getElementById("serial").value.trim(),
+
+            issue: selectedIssues.join("、"),
+            issue_other: document.getElementById("issue_other").value.trim(),
+            symptom_other: document.getElementById("symptom_other").value.trim(),
+
+            uketorihouhou: method,
+            shukajusho: document.getElementById("shukajusho").value.trim(),
+            shukakiboubi: document.getElementById("shukakiboubi").value,
+            shukakiboujikan: document.getElementById("shukakiboujikan").value,
+
+            coupon: document.getElementById("coupon").value.trim(),
+            kiyakuagree: document.getElementById("kiyakuagree").checked ? "同意済み" : ""
+        };
 
         console.log("送信データ:", data);
 
@@ -164,16 +671,65 @@ document.getElementById("form").addEventListener("submit", async function(e) {
             throw new Error("HTTP " + response.status + " : " + result);
         }
 
-        document.getElementById("msg").innerHTML =
-            "<p style='color:green;'>✅ 受付完了しました！</p>";
+        let successText = "";
 
-        this.reset();
+        if (method === "店舗持ち込み") {
+            successText = `
+                <div class="success-box">
+                    <strong>✅ 受付完了しました。</strong><br><br>
+                    修理品は下記店舗までお持ち込みください。
+                    ${STORE_INFO_HTML}
+                </div>
+            `;
+        } else if (method === "集荷依頼・LINEで位置情報を送る") {
+            successText = `
+                <div class="success-box">
+                    <strong>✅ 受付完了しました。</strong><br><br>
+                    続けて、LINEトーク画面から集荷場所の位置情報を送信してください。<br><br>
+                    <strong>送信方法</strong><br>
+                    LINEトーク画面の「＋」ボタン<br>
+                    ↓<br>
+                    「位置情報」<br>
+                    ↓<br>
+                    集荷場所を選んで送信
+                </div>
+            `;
+        } else if (method === "集荷依頼・住所を入力する") {
+            successText = `
+                <div class="success-box">
+                    <strong>✅ 受付完了しました。</strong><br><br>
+                    入力いただいた住所をもとに集荷手配を進めます。<br>
+                    集荷希望日・時間については、確認後にご連絡する場合があります。
+                </div>
+            `;
+        } else {
+            successText = `
+                <div class="success-box">
+                    <strong>✅ 受付完了しました。</strong>
+                </div>
+            `;
+        }
+
+        msg.innerHTML = successText;
+
+        document.getElementById("repairForm").reset();
+        document.querySelectorAll(".method-card").forEach(c => c.classList.remove("active"));
+        document.getElementById("pickupInfoCard").classList.add("hidden");
+        document.getElementById("addressInputBox").classList.add("hidden");
+        document.getElementById("makerOtherBox").classList.add("hidden");
+        document.getElementById("issueOtherBox").classList.add("hidden");
+        document.getElementById("uketorihouhou").value = "";
+
+        window.scrollTo({
+            top: document.body.scrollHeight,
+            behavior: "smooth"
+        });
 
     } catch (err) {
         console.error("送信エラー:", err);
 
-        document.getElementById("msg").innerHTML =
-            "<p style='color:red;'>❌ エラー：" + err + "</p>";
+        msg.innerHTML =
+            `<div class="error-box">❌ エラー：${err}</div>`;
 
         alert("送信エラー\n\n" + err);
     }
