@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 app = Flask(__name__)
 
 # ===== Kintone設定 =====
-KINTONE_BASE = "https://2zx7vnpprtja.cybozu.com"
+KINTONE_BASE = "https://2r2oficviuff.cybozu.com"
 KINTONE_RECORD_URL = KINTONE_BASE + "/k/v1/record.json"
 KINTONE_GET_URL = KINTONE_BASE + "/k/v1/records.json"
 KINTONE_API_TOKEN = os.environ.get("KINTONE_API_TOKEN")
@@ -38,13 +38,13 @@ def send_line_message(user_id, text):
 
 
 # ===== フォーム =====
-@app.route("/form", methods=["GET"])
+@.route("/form", methods=["GET"])
 def form():
     return send_from_directory(".", "form.html")
 
 
 # ===== 登録 =====
-@app.route("/submit", methods=["POST"])
+@.route("/submit", methods=["POST"])
 def submit():
     data = request.json
 
@@ -56,10 +56,10 @@ def submit():
         issue = data.get("issue", "")
         line_user_id = data.get("line_user_id", "")
 
-        notify_url = f"https://line-kintone-app.onrender.com/notify?user={line_user_id}"
+        notify_url = f"https://line-kintone-.onrender.com/notify?user={line_user_id}"
 
         record = {
-            "app": 5,
+            "app": 6,
             "record": {
                 "customer_name": {"value": name},
                 "phone": {"value": phone},
@@ -224,7 +224,7 @@ def notify():
         update_url = KINTONE_BASE + "/k/v1/record.json"
 
         update_data = {
-            "app": 5,
+            "app": 6,
             "id": record_id,
             "record": {
                 "lastnotify": {"value": now_time},
