@@ -422,8 +422,8 @@ button:hover:not(:disabled) {
 
             <label>利用規約</label>
             <div class="terms-box">
-                修理受付後、状態確認のうえお見積りをご案内いたします。  
-                修理不能やキャンセルの場合、返却・処分方法についてご確認させていただく場合があります。  
+                修理受付後、状態確認のうえお見積りをご案内いたします。<br>
+                修理不能やキャンセルの場合、返却・処分方法についてご確認させていただく場合があります。<br>
                 集荷・配送にかかる費用、キャンセル料等が発生する場合があります。
             </div>
 
@@ -444,8 +444,7 @@ button:hover:not(:disabled) {
 <script>
 let userId = "";
 
-const LIFFID = "2009322369-Om7WRQAU";
-const bar = String.fromCharCode(95);
+const liffId = "2009322369-Om7WRQAU";
 
 const storeInfoHtml = `
 <div class="store-box">
@@ -462,7 +461,7 @@ window.onload = async function () {
 
     try {
         await liff.init({
-            liffId: LIFFID,
+            liffId: liffId,
             withLoginOnExternalBrowser: true
         });
 
@@ -606,35 +605,35 @@ document.getElementById("repairForm").addEventListener("submit", async function 
         const method = document.getElementById("uketorihouhou").value;
 
         let maker = document.getElementById("maker").value;
-        const makerOther = document.getElementById("makerOther").value.trim();
+        const makerother = document.getElementById("makerOther").value.trim();
 
-        if (maker === "その他" && makerOther) {
-            maker = makerOther;
+        if (maker === "その他" && makerother) {
+            maker = makerother;
         }
 
-        const data = {};
+        const data = {
+            lineuserid: userId,
 
-        data["line" + bar + "user" + bar + "id"] = userId;
+            name: document.getElementById("name").value.trim(),
+            phone: document.getElementById("phone").value.trim(),
 
-        data.name = document.getElementById("name").value.trim();
-        data.phone = document.getElementById("phone").value.trim();
+            maker: maker,
+            makerother: makerother,
+            model: document.getElementById("model").value.trim(),
+            serial: document.getElementById("serial").value.trim(),
 
-        data.maker = maker;
-        data["maker" + bar + "other"] = makerOther;
-        data.model = document.getElementById("model").value.trim();
-        data.serial = document.getElementById("serial").value.trim();
+            issue: selectedIssues.join("、"),
+            issueother: document.getElementById("issueOther").value.trim(),
+            symptomother: document.getElementById("symptomOther").value.trim(),
 
-        data.issue = selectedIssues.join("、");
-        data["issue" + bar + "other"] = document.getElementById("issueOther").value.trim();
-        data["symptom" + bar + "other"] = document.getElementById("symptomOther").value.trim();
+            uketorihouhou: method,
+            shukajusho: document.getElementById("shukajusho").value.trim(),
+            shukakiboubi: document.getElementById("shukakiboubi").value,
+            shukakiboujikan: document.getElementById("shukakiboujikan").value,
 
-        data.uketorihouhou = method;
-        data.shukajusho = document.getElementById("shukajusho").value.trim();
-        data.shukakiboubi = document.getElementById("shukakiboubi").value;
-        data.shukakiboujikan = document.getElementById("shukakiboujikan").value;
-
-        data.coupon = document.getElementById("coupon").value.trim();
-        data.kiyakuagree = document.getElementById("kiyakuagree").checked ? "同意済み" : "";
+            coupon: document.getElementById("coupon").value.trim(),
+            kiyakuagree: document.getElementById("kiyakuagree").checked ? "同意済み" : ""
+        };
 
         console.log("送信データ:", data);
 
@@ -720,3 +719,4 @@ document.getElementById("repairForm").addEventListener("submit", async function 
 </script>
 
 </body>
+</html>
