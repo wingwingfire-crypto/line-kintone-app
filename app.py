@@ -2,6 +2,7 @@ from flask import Flask, request, send_from_directory
 import requests
 import os
 from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qs
 
 app = Flask(__name__)
 
@@ -16,7 +17,7 @@ KINTONE_APP_ID = 6
 
 # ===== LINE設定 =====
 LINE_TOKEN = os.environ.get("LINE_TOKEN")
-LINE_URL = "https://api.line.me/v2/bot/message/push"
+LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
 
 # ===== 日本時間 =====
@@ -52,7 +53,30 @@ def format_date(value):
     return value
 
 
-# ===== LINE送信 =====
+# ===== 共通：ボタン表示名作成 =====
+def make_record_label(record):
+    record_id = get_value(record, "$id", "")
+    maker = get_value(record, "maker", "")
+    model = get_value(record, "model", "")
+    serial = get_value(record, "serial", "")
+
+    if model:
+        label = f"型番:{model}"
+    elif maker:
+        label = f"メーカー:{maker}"
+    elif serial:
+        label = f"機番:{serial}"
+    else:
+        label = f"修理品#{record_id}"
+
+    # LINEのボタン表示が長すぎるとエラーになるので短くする
+    if len(label) > 20:
+        label = label[:20]
+
+    return label
+
+
+# ===== LINE Push送信 =====
 def send_line_message(user_id, text):
     headers = {
         "Authorization": f"Bearer {LINE_TOKEN}",
@@ -69,10 +93,11 @@ def send_line_message(user_id, text):
         ]
     }
 
-    res = requests.post(LINE_URL, headers=headers, json=data)
+    res = requests.post(LINE_PUSH_URL, headers=headers, json=data)
     print("LINE送信:", res.text)
 
-# ===== LINE返信 =====
+
+# ===== LINE Reply送信 =====
 def reply_line_message(reply_token, text):
     headers = {
         "Authorization": f"Bearer {LINE_TOKEN}",
@@ -91,6 +116,250 @@ def reply_line_message(reply_token, text):
 
     res = requests.post(LINE_REPLY_URL, headers=headers, json=data)
     print("LINE返信:", res.text)
+
+
+# ===== LINE Reply送信：Quick Reply付き =====
+def reply_line_quick_reply(reply_token, text, records):
+    headers = {
+        "Authorization": f"Bearer {LINE_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    items = []
+
+    for record in records[:10]:
+        record_id = get_value(record, "$id", "")
+        label = make_record_label(record)
+
+        items.append({
+            "type": "action",
+            "action": {
+                "type": "postback",
+                "label": label,
+                "data": f"action=check_status&record_id={record_id}",
+                "displayText": label
+            }
+        })
+
+    data = {
+        "replyToken": reply_token,
+        "messages": [
+            {
+                "type": "text",
+                "text": text,
+                "quickReply": {
+                    "items": items
+                }
+            }
+        ]
+    }
+
+    res = requests.post(LINE_REPLY_URL, headers=headers, json=data)
+    print("LINE複数選択返信:", res.text)
+
+
+# ===== Kintone：ユーザーIDから複数レコード取得 =====
+def get_records_by_user(user_id):
+    headers = {
+        "X-Cybozu-API-Token": KINTONE_API_TOKEN
+    }
+
+    query = f'lineid = "{user_id}" order by $id desc limit 10'
+
+    params = {
+        "app": KINTONE_APP_ID,
+        "query": query
+    }
+
+    res = requests.get(
+        KINTONE_GET_URL,
+        headers=headers,
+        params=params
+    )
+
+    print("複数取得ステータス:", res.status_code)
+    print("複数取得本文:", res.text)
+
+    result = res.json()
+
+    return result.get("records", [])
+
+
+# ===== Kintone：レコードIDで1件取得 =====
+def get_record_by_id(record_id):
+    headers = {
+        "X-Cybozu-API-Token": KINTONE_API_TOKEN
+    }
+
+    params = {
+        "app": KINTONE_APP_ID,
+        "id": record_id
+    }
+
+    res = requests.get(
+        KINTONE_RECORD_URL,
+        headers=headers,
+        params=params
+    )
+
+    print("単体取得ステータス:", res.status_code)
+    print("単体取得本文:", res.text)
+
+    result = res.json()
+
+    return result.get("record")
+
+
+# ===== 問い合わせ返信文作成 =====
+def build_status_message(record):
+    name = get_value(record, "customer_name", "")
+    maker = get_value(record, "maker", "")
+    model = get_value(record, "model", "")
+    serial = get_value(record, "serial", "")
+    issue = get_value(record, "issue", "")
+
+    status_jp = get_value(record, "ドロップダウン", "").strip()
+
+    mitsumorikingaku = get_value(record, "mitsumorikingaku", "")
+    mitsumorinaiyo = get_value(record, "mitsumorinaiyo", "")
+    kanryoyoteibi = get_value(record, "kanryoyoteibi", "")
+    okurijobango = get_value(record, "okurijobango", "")
+
+    price_text = format_price(mitsumorikingaku)
+    date_text = format_date(kanryoyoteibi)
+
+    base_info = f"""■ 修理品情報
+メーカー：{maker}
+型番：{model}
+機番：{serial}
+
+"""
+
+    if status_jp in ["⚪修理受付中", "📩集荷依頼済", "🚚荷受待(店舗持込待ち)", "🚶荷受待(店舗持込待ち)"]:
+        return f"""{name}様
+
+以下の修理品の状況です。
+
+{base_info}■ 現在の進捗
+【受付完了・修理品荷受け待ち】
+
+修理品の到着、または確認作業をお待ちしております。
+"""
+
+    elif status_jp == "🟡見積中":
+        return f"""{name}様
+
+以下の修理品の状況です。
+
+{base_info}■ 現在の進捗
+【見積中】
+
+ただいま修理内容を確認し、お見積りを作成しております。
+もうしばらくお待ちください。
+"""
+
+    elif status_jp == "📄見積提出済":
+        return f"""{name}様
+
+以下の修理品の状況です。
+
+{base_info}■ 現在の進捗
+【見積提出済】
+
+■ 故障内容
+{issue}
+
+■ お見積り金額
+{price_text}
+
+■ お見積り内容
+{mitsumorinaiyo if mitsumorinaiyo else "未入力"}
+
+■ 修理完了予定日
+{date_text}
+
+修理を進めるか、キャンセルされるかをご確認ください。
+"""
+
+    elif status_jp == "📦受注(部品待ち)":
+        return f"""{name}様
+
+以下の修理品の状況です。
+
+{base_info}■ 現在の進捗
+【受注・部品待ち】
+
+現在、修理作業または部品手配を進めております。
+
+■ 修理完了予定日
+{date_text}
+"""
+
+    elif status_jp == "✅修理完了連絡済":
+        return f"""{name}様
+
+以下の修理品の状況です。
+
+{base_info}■ 現在の進捗
+【修理完了】
+
+修理が完了しております。
+お手すきの際にご来店をお願いいたします。
+
+■ 修理金額
+{price_text}
+"""
+
+    elif status_jp == "🚚発送完了":
+        return f"""{name}様
+
+以下の修理品の状況です。
+
+{base_info}■ 現在の進捗
+【発送完了】
+
+修理品は発送済みです。
+
+■ 送り状番号
+{okurijobango if okurijobango else "未入力"}
+
+配送状況はこちらからご確認ください。
+https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
+"""
+
+    elif status_jp == "🔴中止(返却)":
+        return f"""{name}様
+
+以下の修理品の状況です。
+
+{base_info}■ 現在の進捗
+【中止・返却】
+
+修理は中止となり、返却対応となります。
+"""
+
+    elif status_jp == "❌中止(処分)":
+        return f"""{name}様
+
+以下の修理品の状況です。
+
+{base_info}■ 現在の進捗
+【中止・処分】
+
+修理は中止となり、処分対応となります。
+"""
+
+    else:
+        return f"""{name}様
+
+以下の修理品の状況です。
+
+{base_info}■ 現在の進捗
+【{status_jp}】
+
+です。
+"""
+
 
 # ===== フォーム表示 =====
 @app.route("/form", methods=["GET"])
@@ -152,7 +421,7 @@ def submit():
         return {"status": "error"}
 
 
-# ===== 通知 =====
+# ===== 通知URLクリック用 =====
 @app.route("/notify", methods=["GET"])
 def notify():
     user_id = request.args.get("user")
@@ -160,7 +429,6 @@ def notify():
     print("受信user:", user_id)
 
     try:
-        # ===== 最新レコード取得 =====
         headers = {
             "X-Cybozu-API-Token": KINTONE_API_TOKEN
         }
@@ -181,18 +449,12 @@ def notify():
         print("Kintone取得ステータス:", res.status_code)
         print("Kintone取得本文:", res.text)
 
-        try:
-            result = res.json()
-        except Exception as e:
-            print("JSON変換エラー:", e)
-            return f"Kintone取得エラー: {res.status_code}"
+        result = res.json()
 
         if "records" not in result or len(result["records"]) == 0:
             return "レコードなし"
 
         record = result["records"][0]
-
-        # ===== 基本情報 =====
         record_id = record["$id"]["value"]
 
         name = get_value(record, "customer_name", "")
@@ -201,25 +463,21 @@ def notify():
         serial = get_value(record, "serial", "")
         issue = get_value(record, "issue", "")
 
-        # ===== 見積・修理情報 =====
         mitsumorikingaku = get_value(record, "mitsumorikingaku", "")
         mitsumorinaiyo = get_value(record, "mitsumorinaiyo", "")
         kanryoyoteibi = get_value(record, "kanryoyoteibi", "")
+        okurijobango = get_value(record, "okurijobango", "")
 
         price_text = format_price(mitsumorikingaku)
         date_text = format_date(kanryoyoteibi)
 
-        # ===== 発送情報 =====
-        okurijobango = get_value(record, "okurijobango", "")
-
-        # ===== 進捗状況取得 =====
         status_jp = get_value(record, "ドロップダウン", "").strip()
         print("取得ステータス:", status_jp)
 
-        # ===== 進捗状況マップ =====
         status_map = {
             "⚪修理受付中": "received",
             "📩集荷依頼済": "pickup_requested",
+            "🚚荷受待(店舗持込待ち)": "waiting_arrival",
             "🚶荷受待(店舗持込待ち)": "waiting_arrival",
             "🟡見積中": "estimating",
             "📄見積提出済": "quoted",
@@ -233,7 +491,6 @@ def notify():
         statuscode = status_map.get(status_jp, "unknown")
         print("変換後:", statuscode)
 
-        # ===== メッセージ作成 =====
         if statuscode == "received":
             message = f"""{name}様
 
@@ -396,13 +653,10 @@ https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
 {status_jp}
 """
 
-        # ===== LINE送信 =====
         send_line_message(user_id, message)
 
-        # ===== 日本時間 =====
         now_time = datetime.now(JST).strftime("%Y-%m-%dT%H:%M:%S%z")
 
-        # ===== 通知履歴保存 =====
         update_data = {
             "app": KINTONE_APP_ID,
             "id": record_id,
@@ -417,13 +671,13 @@ https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
             "Content-Type": "application/json"
         }
 
-        res = requests.put(
+        update_res = requests.put(
             KINTONE_RECORD_URL,
             headers=update_headers,
             json=update_data
         )
 
-        print("履歴更新:", res.text)
+        print("履歴更新:", update_res.text)
 
         return f"送信完了: {status_jp}"
 
@@ -431,7 +685,8 @@ https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
         print("通知エラー:", e)
         return "通知処理エラー"
 
-# ===== LINE Webhook：問い合わせ受付 =====
+
+# ===== LINE Webhook：問い合わせ受付・複数台対応 =====
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
@@ -442,26 +697,47 @@ def webhook():
 
         for event in events:
             event_type = event.get("type")
+            reply_token = event.get("replyToken")
+            user_id = event.get("source", {}).get("userId")
 
-            # メッセージ以外は無視
+            # ===== ボタン選択された場合 =====
+            if event_type == "postback":
+                postback_data = event.get("postback", {}).get("data", "")
+                print("Postback受信:", postback_data)
+
+                parsed = parse_qs(postback_data)
+                action = parsed.get("action", [""])[0]
+                record_id = parsed.get("record_id", [""])[0]
+
+                if action == "check_status" and record_id:
+                    record = get_record_by_id(record_id)
+
+                    if not record:
+                        reply_line_message(
+                            reply_token,
+                            "選択された修理情報が見つかりませんでした。"
+                        )
+                        continue
+
+                    reply_message = build_status_message(record)
+                    reply_line_message(reply_token, reply_message)
+                    continue
+
+            # ===== テキストメッセージの場合 =====
             if event_type != "message":
                 continue
 
             message = event.get("message", {})
             message_type = message.get("type")
 
-            # テキスト以外は無視
             if message_type != "text":
                 continue
 
             user_message = message.get("text", "").strip()
-            reply_token = event.get("replyToken")
-            user_id = event.get("source", {}).get("userId")
 
             print("受信メッセージ:", user_message)
             print("受信userId:", user_id)
 
-            # 「修理問い合わせ」だけ反応
             if user_message not in ["修理問い合わせ", "問い合わせ", "状況確認"]:
                 reply_line_message(
                     reply_token,
@@ -469,193 +745,50 @@ def webhook():
                 )
                 continue
 
-            # ===== Kintoneから最新レコード取得 =====
-            headers = {
-                "X-Cybozu-API-Token": KINTONE_API_TOKEN
-            }
+            # ===== 複数レコード取得 =====
+            records = get_records_by_user(user_id)
 
-            query = f'lineid = "{user_id}" order by $id desc limit 1'
-
-            params = {
-                "app": KINTONE_APP_ID,
-                "query": query
-            }
-
-            res = requests.get(
-                KINTONE_GET_URL,
-                headers=headers,
-                params=params
-            )
-
-            print("問い合わせKintone取得ステータス:", res.status_code)
-            print("問い合わせKintone取得本文:", res.text)
-
-            result = res.json()
-
-            if "records" not in result or len(result["records"]) == 0:
+            if len(records) == 0:
                 reply_line_message(
                     reply_token,
                     "現在、修理受付情報が見つかりませんでした。"
                 )
                 continue
 
-            record = result["records"][0]
+            # 完了精算済み・中止済みを除外
+            closed_statuses = [
+                "●完了(精算済)",
+                "🔴中止(返却)",
+                "❌中止(処分)"
+            ]
 
-            # ===== 必要情報取得 =====
-            name = get_value(record, "customer_name", "")
-            maker = get_value(record, "maker", "")
-            model = get_value(record, "model", "")
-            serial = get_value(record, "serial", "")
-            issue = get_value(record, "issue", "")
+            active_records = []
 
-            status_jp = get_value(record, "ドロップダウン", "").strip()
+            for record in records:
+                status = get_value(record, "ドロップダウン", "").strip()
 
-            mitsumorikingaku = get_value(record, "mitsumorikingaku", "")
-            mitsumorinaiyo = get_value(record, "mitsumorinaiyo", "")
-            kanryoyoteibi = get_value(record, "kanryoyoteibi", "")
+                if status not in closed_statuses:
+                    active_records.append(record)
 
-            price_text = format_price(mitsumorikingaku)
-            date_text = format_date(kanryoyoteibi)
+            if len(active_records) == 0:
+                reply_line_message(
+                    reply_token,
+                    "現在、進行中の修理受付情報はありません。"
+                )
+                continue
 
-            # ===== 進捗ごとの問い合わせ返信 =====
-            if status_jp in ["⚪修理受付中", "📩集荷依頼済", "🚶荷受待(店舗持込待ち)"]:
-                reply_message = f"""{name}様
+            # 1件だけならそのまま返信
+            if len(active_records) == 1:
+                reply_message = build_status_message(active_records[0])
+                reply_line_message(reply_token, reply_message)
+                continue
 
-現在の修理状況は
-
-【受付完了・修理品荷受け待ち】
-
-です。
-
-修理品の到着、または確認作業をお待ちしております。
-"""
-
-            elif status_jp == "🟡見積中":
-                reply_message = f"""{name}様
-
-現在の修理状況は
-
-【見積中】
-
-です。
-
-ただいま修理内容を確認し、お見積りを作成しております。
-もうしばらくお待ちください。
-"""
-
-            elif status_jp == "📄見積提出済":
-                reply_message = f"""{name}様
-
-現在の修理状況は
-
-【見積提出済】
-
-です。
-
-■ 修理品情報
-メーカー：{maker}
-型番：{model}
-機番：{serial}
-
-■ お見積り金額
-{price_text}
-
-■ お見積り内容
-{mitsumorinaiyo if mitsumorinaiyo else "未入力"}
-
-■ 修理完了予定日
-{date_text}
-
-修理を進めるか、キャンセルされるかをご確認ください。
-"""
-
-            elif status_jp == "📦受注(部品待ち)":
-                reply_message = f"""{name}様
-
-現在の修理状況は
-
-【受注・部品待ち】
-
-です。
-
-現在、修理作業または部品手配を進めております。
-
-■ 修理完了予定日
-{date_text}
-"""
-
-            elif status_jp == "✅修理完了連絡済":
-                reply_message = f"""{name}様
-
-現在の修理状況は
-
-【修理完了】
-
-です。
-
-修理が完了しております。
-お手すきの際にご来店をお願いいたします。
-
-■ 修理金額
-{price_text}
-"""
-
-            elif status_jp == "🚚発送完了":
-                okurijobango = get_value(record, "okurijobango", "")
-
-                reply_message = f"""{name}様
-
-現在の修理状況は
-
-【発送完了】
-
-です。
-
-修理品は発送済みです。
-
-■ 送り状番号
-{okurijobango if okurijobango else "未入力"}
-
-配送状況はこちらからご確認ください。
-https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
-"""
-
-            elif status_jp == "🔴中止(返却)":
-                reply_message = f"""{name}様
-
-現在の修理状況は
-
-【中止・返却】
-
-です。
-
-修理は中止となり、返却対応となります。
-"""
-
-            elif status_jp == "❌中止(処分)":
-                reply_message = f"""{name}様
-
-現在の修理状況は
-
-【中止・処分】
-
-です。
-
-修理は中止となり、処分対応となります。
-"""
-
-            else:
-                reply_message = f"""{name}様
-
-現在の修理状況は
-
-【{status_jp}】
-
-です。
-"""
-
-            # ===== LINEに返信 =====
-            reply_line_message(reply_token, reply_message)
+            # 複数件なら選択ボタンを表示
+            reply_line_quick_reply(
+                reply_token,
+                "現在、複数の修理品をお預かりしています。\n確認したい修理品を選択してください。",
+                active_records
+            )
 
         return "OK"
 
