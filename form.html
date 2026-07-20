@@ -201,11 +201,28 @@ textarea {
 
 .guide-step {
     padding: 8px 0;
-    border-bottom: 1px dashed #d7efdF;
+    border-bottom: 1px dashed #d7efdf;
 }
 
 .guide-step:last-child {
     border-bottom: none;
+}
+
+.zip-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.zip-row input {
+    flex: 1;
+}
+
+.zip-row button {
+    width: 120px;
+    padding: 12px;
+    font-size: 14px;
+    border-radius: 10px;
 }
 
 .terms-box {
@@ -436,7 +453,7 @@ button:hover:not(:disabled) {
 
                     <div class="method-card" data-pickup-method="集荷依頼・住所を入力する">
                         <strong>住所を入力する</strong>
-                        <span>集荷住所をフォームに入力</span>
+                        <span>郵便番号から住所検索できます</span>
                     </div>
                 </div>
 
@@ -458,8 +475,34 @@ button:hover:not(:disabled) {
             <h2 class="section-title">5. 集荷情報</h2>
 
             <div id="addressInputBox" class="hidden">
+                <label>郵便番号 <span class="optional">任意</span></label>
+
+                <div class="zip-row">
+                    <input
+                        type="text"
+                        id="zipcode"
+                        name="zipcode"
+                        placeholder="例：7000972"
+                        inputmode="numeric"
+                        maxlength="8"
+                    >
+                    <button type="button" id="zipSearchBtn">住所検索</button>
+                </div>
+
+                <p class="hint">
+                    郵便番号を入力して住所検索を押すと、住所を自動入力できます。
+                </p>
+
                 <label>集荷住所 <span class="required">必須</span></label>
-                <textarea id="shukajusho" name="shukajusho" placeholder="例：岡山県岡山市北区〇〇 1-2-3"></textarea>
+                <textarea
+                    id="shukajusho"
+                    name="shukajusho"
+                    placeholder="例：岡山県岡山市北区上中野2丁目27-12"
+                ></textarea>
+
+                <p class="hint">
+                    番地・建物名・部屋番号などは、必要に応じて追加入力してください。
+                </p>
             </div>
 
             <label>集荷希望日 <span class="optional">任意</span></label>
@@ -599,6 +642,7 @@ document.querySelectorAll("[data-main-method]").forEach(card => {
         const addressInputBox = document.getElementById("addressInputBox");
         const locationGuideBox = document.getElementById("locationGuideBox");
         const shukajusho = document.getElementById("shukajusho");
+        const zipcode = document.getElementById("zipcode");
 
         if (mainMethod === "店舗持ち込み") {
             uketorihouhou.value = "店舗持ち込み";
@@ -610,6 +654,7 @@ document.querySelectorAll("[data-main-method]").forEach(card => {
 
             shukajusho.required = false;
             shukajusho.value = "";
+            zipcode.value = "";
         }
 
         if (mainMethod === "集荷依頼") {
@@ -622,6 +667,7 @@ document.querySelectorAll("[data-main-method]").forEach(card => {
 
             shukajusho.required = false;
             shukajusho.value = "";
+            zipcode.value = "";
         }
     });
 });
@@ -640,6 +686,7 @@ document.querySelectorAll("[data-pickup-method]").forEach(card => {
         const addressInputBox = document.getElementById("addressInputBox");
         const locationGuideBox = document.getElementById("locationGuideBox");
         const shukajusho = document.getElementById("shukajusho");
+        const zipcode = document.getElementById("zipcode");
 
         pickupInfoCard.classList.remove("hidden");
 
@@ -648,6 +695,7 @@ document.querySelectorAll("[data-pickup-method]").forEach(card => {
             locationGuideBox.classList.remove("hidden");
             shukajusho.required = false;
             shukajusho.value = "";
+            zipcode.value = "";
         }
 
         if (pickupMethod === "集荷依頼・住所を入力する") {
@@ -656,6 +704,55 @@ document.querySelectorAll("[data-pickup-method]").forEach(card => {
             shukajusho.required = true;
         }
     });
+});
+
+document.getElementById("zipSearchBtn").addEventListener("click", async function () {
+    const zipcodeInput = document.getElementById("zipcode");
+    const addressInput = document.getElementById("shukajusho");
+
+    const zipcode = zipcodeInput.value.replace("-", "").trim();
+
+    if (!zipcode) {
+        alert("郵便番号を入力してください。");
+        return;
+    }
+
+    if (!/^[0-9]{7}$/.test(zipcode)) {
+        alert("郵便番号は7桁で入力してください。");
+        return;
+    }
+
+    try {
+        this.disabled = true;
+        this.textContent = "検索中";
+
+        const response = await fetch(
+            "https://zipcloud.ibsnet.co.jp/api/search?zipcode=" + zipcode
+        );
+
+        const data = await response.json();
+
+        if (data.status !== 200 || !data.results || data.results.length === 0) {
+            alert("住所が見つかりませんでした。手入力してください。");
+            return;
+        }
+
+        const result = data.results[0];
+
+        const address =
+            result.address1 +
+            result.address2 +
+            result.address3;
+
+        addressInput.value = address;
+
+    } catch (err) {
+        console.error("郵便番号検索エラー:", err);
+        alert("住所検索に失敗しました。手入力してください。");
+    } finally {
+        this.disabled = false;
+        this.textContent = "住所検索";
+    }
 });
 
 function getSelectedIssues() {
