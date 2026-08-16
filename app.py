@@ -8,7 +8,7 @@ import html
 app = Flask(__name__)
 
 # ===== Kintone設定 =====
-KINTONE_BASE = "https://2r2oficviuff.cybozu.com"
+KINTONE_BASE = "https://9oh3c.cybozu.com"
 KINTONE_RECORD_URL = KINTONE_BASE + "/k/v1/record.json"
 KINTONE_GET_URL = KINTONE_BASE + "/k/v1/records.json"
 KINTONE_API_TOKEN = os.environ.get("KINTONE_API_TOKEN")
@@ -209,7 +209,7 @@ def makecancelbuttons(recordid):
 # ===== Kintone：LINEユーザーIDから複数取得 =====
 def getrecordsbyuser(userid):
     headers = {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN
+        "X-Cybozu-API-Token": 
     }
 
     query = f'lineid = "{userid}" order by $id desc limit 10'
@@ -235,7 +235,7 @@ def getrecordsbyuser(userid):
 # ===== Kintone：レコードIDで1件取得 =====
 def getrecordbyid(recordid):
     headers = {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN
+        "X-Cybozu-API-Token": 
     }
 
     params = {
@@ -259,7 +259,7 @@ def getrecordbyid(recordid):
 # ===== Kintone：修理可否回答更新 =====
 def updaterepairanswer(recordid, answertext):
     headers = {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
+        "X-Cybozu-API-Token": ,
         "Content-Type": "application/json"
     }
 
@@ -285,7 +285,7 @@ def updaterepairanswer(recordid, answertext):
 # ===== Kintone：キャンセル後対応更新 =====
 def updatecancelaction(recordid, canceltext):
     headers = {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
+        "X-Cybozu-API-Token": ,
         "Content-Type": "application/json"
     }
 
@@ -311,7 +311,7 @@ def updatecancelaction(recordid, canceltext):
 # ===== Kintone：位置情報更新 =====
 def updatelocationinfo(recordid, shukabasho, ido, keido, mapurl):
     headers = {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
+        "X-Cybozu-API-Token": ,
         "Content-Type": "application/json"
     }
 
@@ -348,7 +348,7 @@ def updatenotifyhistory(recordid, message):
     nowtime = datetime.now(JST).strftime("%Y-%m-%dT%H:%M:%S%z")
 
     headers = {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
+        "X-Cybozu-API-Token": ,
         "Content-Type": "application/json"
     }
 
@@ -686,7 +686,7 @@ def submit():
         }
 
         headers = {
-            "X-Cybozu-API-Token": KINTONE_API_TOKEN,
+            "X-Cybozu-API-Token": ,
             "Content-Type": "application/json"
         }
 
@@ -787,7 +787,7 @@ def notify():
 
     try:
         headers = {
-            "X-Cybozu-API-Token": KINTONE_API_TOKEN
+            "X-Cybozu-API-Token": 
         }
 
         query = f'lineid = "{userid}" order by $id desc limit 1'
