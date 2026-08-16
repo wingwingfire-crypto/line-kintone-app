@@ -686,7 +686,7 @@ def submit():
         }
 
         headers = {
-            "X-Cybozu-API-Token": ,
+            "X-Cybozu-API-Token": KINTONE_API_TOKEN,
             "Content-Type": "application/json"
         }
 
