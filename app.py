@@ -259,7 +259,7 @@ def getrecordbyid(recordid):
 # ===== Kintone：修理可否回答更新 =====
 def updaterepairanswer(recordid, answertext):
     headers = {
-        "": ,
+        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
         "Content-Type": "application/json"
     }
 
