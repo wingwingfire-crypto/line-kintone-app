@@ -209,7 +209,7 @@ def makecancelbuttons(recordid):
 # ===== Kintone：LINEユーザーIDから複数取得 =====
 def getrecordsbyuser(userid):
     headers = {
-        "X-Cybozu-API-Token": 
+        "X-Cybozu-API-Token": KINTONE_API_TOKEN
     }
 
     query = f'lineid = "{userid}" order by $id desc limit 10'
