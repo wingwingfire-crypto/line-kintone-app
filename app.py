@@ -235,7 +235,7 @@ def getrecordsbyuser(userid):
 # ===== Kintone：レコードIDで1件取得 =====
 def getrecordbyid(recordid):
     headers = {
-        "X-Cybozu-API-Token": 
+        "X-Cybozu-API-Token": KINTONE_API_TOKEN
     }
 
     params = {
@@ -259,7 +259,7 @@ def getrecordbyid(recordid):
 # ===== Kintone：修理可否回答更新 =====
 def updaterepairanswer(recordid, answertext):
     headers = {
-        "X-Cybozu-API-Token": ,
+        "": ,
         "Content-Type": "application/json"
     }
 
@@ -285,7 +285,7 @@ def updaterepairanswer(recordid, answertext):
 # ===== Kintone：キャンセル後対応更新 =====
 def updatecancelaction(recordid, canceltext):
     headers = {
-        "X-Cybozu-API-Token": ,
+        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
         "Content-Type": "application/json"
     }
 
@@ -311,7 +311,7 @@ def updatecancelaction(recordid, canceltext):
 # ===== Kintone：位置情報更新 =====
 def updatelocationinfo(recordid, shukabasho, ido, keido, mapurl):
     headers = {
-        "X-Cybozu-API-Token": ,
+        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
         "Content-Type": "application/json"
     }
 
@@ -348,7 +348,7 @@ def updatenotifyhistory(recordid, message):
     nowtime = datetime.now(JST).strftime("%Y-%m-%dT%H:%M:%S%z")
 
     headers = {
-        "X-Cybozu-API-Token": ,
+        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
         "Content-Type": "application/json"
     }
 
@@ -787,7 +787,7 @@ def notify():
 
     try:
         headers = {
-            "X-Cybozu-API-Token": 
+            "X-Cybozu-API-Token": KINTONE_API_TOKEN
         }
 
         query = f'lineid = "{userid}" order by $id desc limit 1'
