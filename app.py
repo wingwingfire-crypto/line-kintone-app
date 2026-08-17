@@ -682,7 +682,7 @@ def submit():
     result = res.json()
     record_id = result.get("id", "")
 
-    message = f"""修理受付を受け付けました。
+    base_message = f"""修理受付を受け付けました。
 
 受付番号：{record_id}
 
@@ -691,19 +691,32 @@ def submit():
 お申し込みありがとうございます。
 内容を確認し、準備が整い次第ご案内いたします。"""
 
-    quick_items = []
-
     if uketorihouhou == "集荷依頼・LINEで位置情報を送る":
-        message += """
+        location_message = """📍 集荷場所の送信が必要です
 
-【次にやること】
 下の「📍 集荷場所を送る」ボタンを押してください。
 
-位置情報画面が開いたら、集荷場所を選んで、緑の✅を押してください。"""
+位置情報画面が開いたら、集荷場所を選び、緑の✅を押してください。"""
 
-        quick_items.append(quick_reply_location("📍 集荷場所を送る"))
+        messages = [
+            {
+                "type": "text",
+                "text": base_message
+            },
+            {
+                "type": "text",
+                "text": location_message,
+                "quickReply": {
+                    "items": [
+                        quick_reply_location("📍 集荷場所を送る")
+                    ]
+                }
+            }
+        ]
 
-    send_line_push(lineuserid, message, quick_items if quick_items else None)
+        send_line_push_messages(lineuserid, messages)
+    else:
+        send_line_push(lineuserid, base_message)
 
     return "OK", 200
 
@@ -890,7 +903,7 @@ def handle_location_message(user_id, reply_token, message):
     henkyakubasho = getvalue(target_record, "henkyakubasho", "")
     sameaddress = getvalue(target_record, "sameaddress", "")
 
-    # 1回目：集荷場所
+    # 1回目：集荷場所として登録
     if not shukabasho:
         res = update_location_pickup(record_id, location_text, latitude, longitude)
 
@@ -898,18 +911,24 @@ def handle_location_message(user_id, reply_token, message):
             if sameaddress == "はい" or henkyakuhouhou == "集荷場所と同じ":
                 send_line_reply(
                     reply_token,
-                    "集荷場所の位置情報を登録しました。\n返却場所は集荷場所と同じとして登録しています。"
+                    "集荷場所を登録しました。\n返却場所は集荷場所と同じとして登録しています。"
                 )
             elif henkyakuhouhou == "LINEで位置情報を送る":
                 send_line_reply(
                     reply_token,
-                    "集荷場所の位置情報を登録しました。\n\n続いて、返却場所を送ってください。\n下の「📍 返却場所を送る」ボタンを押し、場所を選んで緑の✅を押してください。",
+                    """集荷場所を登録しました。
+
+📍 次に、返却場所を送ってください
+
+下の「📍 返却場所を送る」ボタンを押してください。
+
+位置情報画面が開いたら、返却場所を選び、緑の✅を押してください。""",
                     [quick_reply_location("📍 返却場所を送る")]
                 )
             else:
                 send_line_reply(
                     reply_token,
-                    "集荷場所の位置情報を登録しました。"
+                    "集荷場所を登録しました。"
                 )
         else:
             send_line_reply(
@@ -918,14 +937,14 @@ def handle_location_message(user_id, reply_token, message):
             )
         return
 
-    # 2回目：返却場所
+    # 2回目：返却場所として登録
     if henkyakuhouhou == "LINEで位置情報を送る" and not henkyakubasho:
         res = update_location_return(record_id, location_text, latitude, longitude)
 
         if res.ok:
             send_line_reply(
                 reply_token,
-                "返却場所の位置情報を登録しました。\nご協力ありがとうございます。"
+                "返却場所を登録しました。\nご協力ありがとうございます。"
             )
         else:
             send_line_reply(
@@ -934,7 +953,7 @@ def handle_location_message(user_id, reply_token, message):
             )
         return
 
-    # それ以外：既に登録済みの案内
+    # すでに登録済みの場合
     if henkyakuhouhou == "LINEで位置情報を送る" and henkyakubasho:
         send_line_reply(
             reply_token,
