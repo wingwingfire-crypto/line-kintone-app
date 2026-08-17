@@ -1,33 +1,68 @@
-from flask import Flask, request, send_from_directory
-import requests
 import os
-from datetime import datetime, timedelta, timezone
-from urllib.parse import parse_qs
+import json
 import html
+import requests
+from datetime import datetime, timezone
+from urllib.parse import parse_qs
+
+from flask import Flask, request, render_template, jsonify
 
 app = Flask(__name__)
 
-# ===== Kintone設定 =====
-KINTONE_BASE = "https://9oh3c.cybozu.com"
-KINTONE_RECORD_URL = KINTONE_BASE + "/k/v1/record.json"
-KINTONE_GET_URL = KINTONE_BASE + "/k/v1/records.json"
+# =========================
+# 基本設定
+# =========================
+
+LINE_CHANNEL_ACCESS_TOKEN = (
+    os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
+    or os.environ.get("LINE_TOKEN")
+)
+
 KINTONE_API_TOKEN = os.environ.get("KINTONE_API_TOKEN")
 
+KINTONE_BASE = "https://9oh3c.cybozu.com"
 KINTONE_APP_ID = 6
 
-# ===== LINE設定 =====
-LINE_TOKEN = os.environ.get("LINE_TOKEN")
-LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
+PUBLIC_BASE_URL = os.environ.get(
+    "PUBLIC_BASE_URL",
+    "https://line-kintone-app.onrender.com"
+)
+
+KINTONE_RECORD_URL = f"{KINTONE_BASE}/k/v1/record.json"
+KINTONE_RECORDS_URL = f"{KINTONE_BASE}/k/v1/records.json"
+
 LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
-
-# ===== 日本時間 =====
-JST = timezone(timedelta(hours=9))
+LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 
 
-# ===== 共通：Kintone値取得 =====
-def getvalue(record, fieldcode, default=""):
+# =========================
+# 共通ヘルパー
+# =========================
+
+def now_utc_for_kintone():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def kintone_headers():
+    return {
+        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
+        "Content-Type": "application/json"
+    }
+
+
+def line_headers():
+    return {
+        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+
+def getvalue(record, field_code, default=""):
     try:
-        value = record.get(fieldcode, {}).get("value", default)
+        field = record.get(field_code)
+        if not field:
+            return default
+        value = field.get("value")
         if value is None:
             return default
         return value
@@ -35,1287 +70,1001 @@ def getvalue(record, fieldcode, default=""):
         return default
 
 
-# ===== 共通：金額表示 =====
-def formatprice(value):
-    if value is None or value == "":
-        return "未入力"
-
-    try:
-        return f"{int(float(value)):,}円"
-    except Exception:
-        return str(value) + "円"
+def escape_kintone_query_value(value):
+    if value is None:
+        return ""
+    return str(value).replace("\\", "\\\\").replace('"', '\\"')
 
 
-# ===== 共通：日付表示 =====
-def formatdate(value):
-    if value is None or value == "":
-        return "未入力"
-    return value
+def make_field(value):
+    return {"value": value if value is not None else ""}
 
 
-# ===== 複数台選択ボタン名 =====
-def makerecordlabel(record):
-    recordid = getvalue(record, "$id", "")
-    maker = getvalue(record, "maker", "")
-    model = getvalue(record, "model", "")
-    serial = getvalue(record, "serial", "")
-
-    if model:
-        label = f"型番:{model}"
-    elif maker:
-        label = f"メーカー:{maker}"
-    elif serial:
-        label = f"機番:{serial}"
-    else:
-        label = f"修理品#{recordid}"
-
-    if len(label) > 20:
-        label = label[:20]
-
-    return label
-
-
-# ===== LINE Push送信 =====
-def sendlinemessage(userid, text, quickreplyitems=None):
-    headers = {
-        "Authorization": f"Bearer {LINE_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
+def send_line_reply(reply_token, text, quick_reply_items=None):
     message = {
         "type": "text",
         "text": text
     }
 
-    if quickreplyitems:
+    if quick_reply_items:
         message["quickReply"] = {
-            "items": quickreplyitems
+            "items": quick_reply_items
         }
 
-    data = {
-        "to": userid,
-        "messages": [message]
-    }
-
-    res = requests.post(
-        LINE_PUSH_URL,
-        headers=headers,
-        json=data
-    )
-
-    print("LINE送信:", res.text)
-
-
-# ===== LINE Reply送信 =====
-def replylinemessage(replytoken, text, quickreplyitems=None):
-    headers = {
-        "Authorization": f"Bearer {LINE_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    message = {
-        "type": "text",
-        "text": text
-    }
-
-    if quickreplyitems:
-        message["quickReply"] = {
-            "items": quickreplyitems
-        }
-
-    data = {
-        "replyToken": replytoken,
+    payload = {
+        "replyToken": reply_token,
         "messages": [message]
     }
 
     res = requests.post(
         LINE_REPLY_URL,
-        headers=headers,
-        json=data
+        headers=line_headers(),
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8")
     )
 
     print("LINE返信:", res.text)
+    return res
 
 
-# ===== 複数台選択 Quick Reply =====
-def replylinequickreply(replytoken, text, records):
-    items = []
-
-    for record in records[:10]:
-        recordid = getvalue(record, "$id", "")
-        label = makerecordlabel(record)
-
-        items.append({
-            "type": "action",
-            "action": {
-                "type": "postback",
-                "label": label,
-                "data": f"action=checkstatus&recordid={recordid}",
-                "displayText": label
-            }
-        })
-
-    replylinemessage(replytoken, text, items)
-
-
-# ===== 修理可否ボタン =====
-def makerepairanswerbuttons(recordid):
-    return [
-        {
-            "type": "action",
-            "action": {
-                "type": "postback",
-                "label": "修理を依頼する",
-                "data": f"action=repairaccept&recordid={recordid}",
-                "displayText": "修理を依頼する"
-            }
-        },
-        {
-            "type": "action",
-            "action": {
-                "type": "postback",
-                "label": "キャンセルする",
-                "data": f"action=repaircancel&recordid={recordid}",
-                "displayText": "キャンセルする"
-            }
-        }
-    ]
-
-
-# ===== キャンセル後対応ボタン =====
-def makecancelbuttons(recordid):
-    return [
-        {
-            "type": "action",
-            "action": {
-                "type": "postback",
-                "label": "店舗で受け取る",
-                "data": f"action=cancelpickup&recordid={recordid}",
-                "displayText": "店舗で受け取る"
-            }
-        },
-        {
-            "type": "action",
-            "action": {
-                "type": "postback",
-                "label": "店舗で処分する",
-                "data": f"action=canceldisposal&recordid={recordid}",
-                "displayText": "店舗で処分する"
-            }
-        }
-    ]
-
-
-# ===== Kintone：LINEユーザーIDから複数取得 =====
-def getrecordsbyuser(userid):
-    headers = {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN
+def send_line_push(user_id, text, quick_reply_items=None):
+    message = {
+        "type": "text",
+        "text": text
     }
 
-    query = f'lineid = "{userid}" order by $id desc limit 10'
+    if quick_reply_items:
+        message["quickReply"] = {
+            "items": quick_reply_items
+        }
 
-    params = {
-        "app": KINTONE_APP_ID,
-        "query": query
+    payload = {
+        "to": user_id,
+        "messages": [message]
     }
 
-    res = requests.get(
-        KINTONE_GET_URL,
-        headers=headers,
-        params=params
+    res = requests.post(
+        LINE_PUSH_URL,
+        headers=line_headers(),
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8")
     )
 
-    print("複数取得ステータス:", res.status_code)
-    print("複数取得本文:", res.text)
-
-    result = res.json()
-    return result.get("records", [])
+    print("LINE送信:", res.text)
+    return res
 
 
-# ===== Kintone：レコードIDで1件取得 =====
-def getrecordbyid(recordid):
-    headers = {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN
+def send_line_push_messages(user_id, messages):
+    payload = {
+        "to": user_id,
+        "messages": messages
     }
 
+    res = requests.post(
+        LINE_PUSH_URL,
+        headers=line_headers(),
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    )
+
+    print("LINE複数送信:", res.text)
+    return res
+
+
+def quick_reply_location(label="📍 位置情報を送る"):
+    return {
+        "type": "action",
+        "action": {
+            "type": "location",
+            "label": label
+        }
+    }
+
+
+def quick_reply_text(label, text):
+    return {
+        "type": "action",
+        "action": {
+            "type": "message",
+            "label": label,
+            "text": text
+        }
+    }
+
+
+def quick_reply_postback(label, data, display_text=None):
+    action = {
+        "type": "postback",
+        "label": label,
+        "data": data
+    }
+
+    if display_text:
+        action["displayText"] = display_text
+
+    return {
+        "type": "action",
+        "action": action
+    }
+
+
+# =========================
+# Kintone操作
+# =========================
+
+def add_kintone_record(record):
+    payload = {
+        "app": KINTONE_APP_ID,
+        "record": record
+    }
+
+    res = requests.post(
+        KINTONE_RECORD_URL,
+        headers=kintone_headers(),
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    )
+
+    print("Kintone登録:", res.text)
+    return res
+
+
+def get_kintone_record(record_id):
     params = {
         "app": KINTONE_APP_ID,
-        "id": recordid
+        "id": record_id
     }
 
     res = requests.get(
         KINTONE_RECORD_URL,
-        headers=headers,
+        headers={"X-Cybozu-API-Token": KINTONE_API_TOKEN},
         params=params
     )
 
     print("単体取得ステータス:", res.status_code)
     print("単体取得本文:", res.text)
 
-    result = res.json()
-    return result.get("record")
-
-
-# ===== Kintone：修理可否回答更新 =====
-def updaterepairanswer(recordid, answertext):
-    headers = {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "app": KINTONE_APP_ID,
-        "id": recordid,
-        "record": {
-            "shurikahikaito": {
-                "value": answertext
-            }
-        }
-    }
-
-    res = requests.put(
-        KINTONE_RECORD_URL,
-        headers=headers,
-        json=data
-    )
-
-    print("修理可否回答更新:", res.text)
-
-
-# ===== Kintone：キャンセル後対応更新 =====
-def updatecancelaction(recordid, canceltext):
-    headers = {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "app": KINTONE_APP_ID,
-        "id": recordid,
-        "record": {
-            "canceltaio": {
-                "value": canceltext
-            }
-        }
-    }
-
-    res = requests.put(
-        KINTONE_RECORD_URL,
-        headers=headers,
-        json=data
-    )
-
-    print("キャンセル後対応更新:", res.text)
-
-
-# ===== Kintone：位置情報更新 =====
-def updatelocationinfo(recordid, shukabasho, ido, keido, mapurl):
-    headers = {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "app": KINTONE_APP_ID,
-        "id": recordid,
-        "record": {
-            "shukabasho": {
-                "value": shukabasho
-            },
-            "ido": {
-                "value": str(ido)
-            },
-            "keido": {
-                "value": str(keido)
-            },
-            "mapurl": {
-                "value": mapurl
-            }
-        }
-    }
-
-    res = requests.put(
-        KINTONE_RECORD_URL,
-        headers=headers,
-        json=data
-    )
-
-    print("位置情報更新:", res.text)
-
-
-# ===== Kintone：通知履歴更新 =====
-def updatenotifyhistory(recordid, message):
-    nowtime = datetime.now(JST).strftime("%Y-%m-%dT%H:%M:%S%z")
-
-    headers = {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "app": KINTONE_APP_ID,
-        "id": recordid,
-        "record": {
-            "lastnotify": {
-                "value": nowtime
-            },
-            "notifymessage": {
-                "value": message
-            }
-        }
-    }
-
-    res = requests.put(
-        KINTONE_RECORD_URL,
-        headers=headers,
-        json=data
-    )
-
-    print("履歴更新:", res.text)
-
-
-# ===== 最新の進行中レコード取得 =====
-def getlatestactiverecord(userid):
-    records = getrecordsbyuser(userid)
-
-    if len(records) == 0:
+    if not res.ok:
         return None
 
-    closedstatuses = [
-        "●完了(精算済)",
-        "🔴中止(返却)",
-        "❌中止(処分)"
-    ]
-
-    for record in records:
-        status = getvalue(record, "ドロップダウン", "").strip()
-        if status not in closedstatuses:
-            return record
-
-    return records[0]
+    return res.json().get("record")
 
 
-# ===== 問い合わせ返信文作成 =====
-def buildstatusmessage(record):
+def get_records_by_lineid(line_user_id, limit=10):
+    safe_user_id = escape_kintone_query_value(line_user_id)
+
+    params = {
+        "app": KINTONE_APP_ID,
+        "query": f'lineid = "{safe_user_id}" order by $id desc limit {limit}'
+    }
+
+    res = requests.get(
+        KINTONE_RECORDS_URL,
+        headers={"X-Cybozu-API-Token": KINTONE_API_TOKEN},
+        params=params
+    )
+
+    print("複数取得ステータス:", res.status_code)
+    print("複数取得本文:", res.text)
+
+    if not res.ok:
+        return []
+
+    return res.json().get("records", [])
+
+
+def update_kintone_record(record_id, fields):
+    payload = {
+        "app": KINTONE_APP_ID,
+        "id": record_id,
+        "record": fields
+    }
+
+    res = requests.put(
+        KINTONE_RECORD_URL,
+        headers=kintone_headers(),
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    )
+
+    print("Kintone更新:", res.text)
+    return res
+
+
+def update_location_pickup(record_id, address, latitude, longitude):
+    map_url = f"https://www.google.com/maps?q={latitude},{longitude}"
+
+    fields = {
+        "shukabasho": make_field(address),
+        "ido": make_field(str(latitude)),
+        "keido": make_field(str(longitude)),
+        "mapurl": make_field(map_url)
+    }
+
+    record = get_kintone_record(record_id)
+    if record:
+        sameaddress = getvalue(record, "sameaddress", "")
+        henkyakuhouhou = getvalue(record, "henkyakuhouhou", "")
+
+        if sameaddress == "はい" or henkyakuhouhou == "集荷場所と同じ":
+            fields.update({
+                "henkyakubasho": make_field(address),
+                "henkyakuido": make_field(str(latitude)),
+                "henkyakukeido": make_field(str(longitude)),
+                "henkyakumapurl": make_field(map_url)
+            })
+
+            if not getvalue(record, "henkyakujusho", ""):
+                fields["henkyakujusho"] = make_field("集荷場所と同じ")
+
+    return update_kintone_record(record_id, fields)
+
+
+def update_location_return(record_id, address, latitude, longitude):
+    map_url = f"https://www.google.com/maps?q={latitude},{longitude}"
+
+    fields = {
+        "henkyakubasho": make_field(address),
+        "henkyakuido": make_field(str(latitude)),
+        "henkyakukeido": make_field(str(longitude)),
+        "henkyakumapurl": make_field(map_url)
+    }
+
+    return update_kintone_record(record_id, fields)
+
+
+def update_notify_history(record_id, message):
+    fields = {
+        "lastnotify": make_field(now_utc_for_kintone()),
+        "notifymessage": make_field(message)
+    }
+
+    res = update_kintone_record(record_id, fields)
+    print("履歴更新:", res.text)
+    return res
+
+
+def update_repair_answer(record_id, answer):
+    fields = {
+        "shurikahikaito": make_field(answer)
+    }
+
+    if answer == "修理する":
+        fields["ドロップダウン"] = make_field("受注")
+
+    if answer == "キャンセル":
+        fields["ドロップダウン"] = make_field("中止")
+
+    return update_kintone_record(record_id, fields)
+
+
+def update_cancel_action(record_id, action):
+    fields = {
+        "canceltaio": make_field(action)
+    }
+
+    return update_kintone_record(record_id, fields)
+
+
+# =========================
+# 表示・文面作成
+# =========================
+
+def build_status_text(record):
+    record_id = getvalue(record, "$id", "")
+    status = getvalue(record, "ドロップダウン", "未設定")
     name = getvalue(record, "customer_name", "")
     maker = getvalue(record, "maker", "")
     model = getvalue(record, "model", "")
     serial = getvalue(record, "serial", "")
     issue = getvalue(record, "issue", "")
-    statusjp = getvalue(record, "ドロップダウン", "").strip()
-
-    mitsumorikingaku = getvalue(record, "mitsumorikingaku", "")
-    mitsumorinaiyo = getvalue(record, "mitsumorinaiyo", "")
-    kanryoyoteibi = getvalue(record, "kanryoyoteibi", "")
-    okurijobango = getvalue(record, "okurijobango", "")
+    estimate = getvalue(record, "mitsumorikingaku", "")
+    estimate_detail = getvalue(record, "mitsumorinaiyo", "")
+    due_date = getvalue(record, "kanryoyoteibi", "")
+    tracking = getvalue(record, "okurijobango", "")
+    uketorihouhou = getvalue(record, "uketorihouhou", "")
+    shukajusho = getvalue(record, "shukajusho", "")
     shukabasho = getvalue(record, "shukabasho", "")
     mapurl = getvalue(record, "mapurl", "")
-    shurikahikaito = getvalue(record, "shurikahikaito", "")
-    canceltaio = getvalue(record, "canceltaio", "")
-
-    pricetext = formatprice(mitsumorikingaku)
-    datetext = formatdate(kanryoyoteibi)
-
-    baseinfo = f"""■ 修理品情報
-メーカー：{maker}
-型番：{model}
-機番：{serial}
-
-"""
-
-    if statusjp in ["⚪修理受付中", "📩集荷依頼済", "🚚荷受待(店舗持込待ち)", "🚶荷受待(店舗持込待ち)"]:
-        return f"""{name}様
-
-以下の修理品の状況です。
-
-{baseinfo}■ 現在の進捗
-【受付完了・修理品荷受け待ち】
-
-修理品の到着、または確認作業をお待ちしております。
-
-■ 集荷場所
-{shukabasho if shukabasho else "未登録"}
-
-■ 地図URL
-{mapurl if mapurl else "未登録"}
-"""
-
-    elif statusjp == "🟡見積中":
-        return f"""{name}様
-
-以下の修理品の状況です。
-
-{baseinfo}■ 現在の進捗
-【見積中】
-
-ただいま修理内容を確認し、お見積りを作成しております。
-もうしばらくお待ちください。
-"""
-
-    elif statusjp == "📄見積提出済":
-        answertext = ""
-
-        if shurikahikaito == "修理する":
-            answertext = """
-
-■ お客様回答
-修理依頼済みです。
-"""
-        elif shurikahikaito == "キャンセル":
-            answertext = f"""
-
-■ お客様回答
-キャンセル受付済みです。
-
-■ キャンセル後対応
-{canceltaio if canceltaio else "未選択"}
-"""
-
-        return f"""{name}様
-
-以下の修理品の状況です。
-
-{baseinfo}■ 現在の進捗
-【見積提出済】
-
-■ 故障内容
-{issue}
-
-■ お見積り金額
-{pricetext}
-
-■ お見積り内容
-{mitsumorinaiyo if mitsumorinaiyo else "未入力"}
-
-■ 修理完了予定日
-{datetext}
-{answertext}
-修理を進めるか、キャンセルされるかをご確認ください。
-"""
-
-    elif statusjp == "📦受注(部品待ち)":
-        return f"""{name}様
-
-以下の修理品の状況です。
-
-{baseinfo}■ 現在の進捗
-【受注・部品待ち】
-
-現在、修理作業または部品手配を進めております。
-
-■ 修理完了予定日
-{datetext}
-"""
-
-    elif statusjp == "✅修理完了連絡済":
-        return f"""{name}様
-
-以下の修理品の状況です。
-
-{baseinfo}■ 現在の進捗
-【修理完了】
-
-修理が完了しております。
-お手すきの際にご来店をお願いいたします。
-
-■ 修理金額
-{pricetext}
-"""
-
-    elif statusjp == "🚚発送完了":
-        return f"""{name}様
-
-以下の修理品の状況です。
-
-{baseinfo}■ 現在の進捗
-【発送完了】
-
-修理品は発送済みです。
-
-■ 送り状番号
-{okurijobango if okurijobango else "未入力"}
-
-配送状況はこちらからご確認ください。
-https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
-"""
-
-    elif statusjp == "🔴中止(返却)":
-        return f"""{name}様
-
-以下の修理品の状況です。
-
-{baseinfo}■ 現在の進捗
-【中止・返却】
-
-修理は中止となり、返却対応となります。
-"""
-
-    elif statusjp == "❌中止(処分)":
-        return f"""{name}様
-
-以下の修理品の状況です。
-
-{baseinfo}■ 現在の進捗
-【中止・処分】
-
-修理は中止となり、処分対応となります。
-"""
-
-    else:
-        return f"""{name}様
-
-以下の修理品の状況です。
-
-{baseinfo}■ 現在の進捗
-【{statusjp}】
-
-です。
-"""
-
-
-# ===== 見積未回答ならボタン表示 =====
-def shouldshowrepairanswerbuttons(record):
-    statusjp = getvalue(record, "ドロップダウン", "").strip()
-    shurikahikaito = getvalue(record, "shurikahikaito", "")
-
-    if statusjp == "📄見積提出済" and shurikahikaito == "":
-        return True
-
-    return False
-
-
-# ===== フォーム表示 =====
-@app.route("/form", methods=["GET"])
-def form():
-    return send_from_directory(".", "form.html")
-
-
-# ===== フォーム登録 =====
-@app.route("/submit", methods=["POST"])
-def submit():
-    data = request.json
-
-    try:
-        name = data.get("name", "")
-        phone = data.get("phone", "")
-
-        maker = data.get("maker", "")
-        makerother = data.get("makerother", "")
-
-        model = data.get("model", "")
-        serial = data.get("serial", "")
-
-        issue = data.get("issue", "")
-        issueother = data.get("issueother", "")
-        symptomother = data.get("symptomother", "")
-
-        uketorihouhou = data.get("uketorihouhou", "")
-        shukajusho = data.get("shukajusho", "")
-        shukakiboubi = data.get("shukakiboubi", "")
-        shukakiboujikan = data.get("shukakiboujikan", "")
-
-        coupon = data.get("coupon", "")
-        kiyakuagree = data.get("kiyakuagree", "")
-
-        lineuserid = data.get("lineuserid", "")
-
-        notifyurl = f"https://line-kintone-app.onrender.com/notify?user={lineuserid}"
-
-        recordfields = {
-            "customer_name": {
-                "value": name
-            },
-            "phone": {
-                "value": phone
-            },
-            "maker": {
-                "value": maker
-            },
-            "makerother": {
-                "value": makerother
-            },
-            "model": {
-                "value": model
-            },
-            "serial": {
-                "value": serial
-            },
-            "issue": {
-                "value": issue
-            },
-            "issueother": {
-                "value": issueother
-            },
-            "symptomother": {
-                "value": symptomother
-            },
-            "uketorihouhou": {
-                "value": uketorihouhou
-            },
-            "shukajusho": {
-                "value": shukajusho
-            },
-            "shukakiboubi": {
-                "value": shukakiboubi if shukakiboubi else None
-            },
-            "shukakiboujikan": {
-                "value": shukakiboujikan
-            },
-            "coupon": {
-                "value": coupon
-            },
-            "kiyakuagree": {
-                "value": kiyakuagree
-            },
-            "lineid": {
-                "value": lineuserid
-            },
-            "notifyurl": {
-                "value": notifyurl
-            }
-        }
-
-        if uketorihouhou == "集荷依頼・住所を入力する" and shukajusho:
-            recordfields["shukabasho"] = {
-                "value": shukajusho
-            }
-
-        record = {
-            "app": KINTONE_APP_ID,
-            "record": recordfields
-        }
-
-        headers = {
-            "X-Cybozu-API-Token": KINTONE_API_TOKEN,
-            "Content-Type": "application/json"
-        }
-
-        res = requests.post(
-            KINTONE_RECORD_URL,
-            headers=headers,
-            json=record
-        )
-
-        print("Kintone登録:", res.text)
-
-        if lineuserid:
-            if uketorihouhou == "店舗持ち込み":
-                message = f"""{name}様
-
-📩 修理受付を受け付けました。
-
-修理品は下記店舗までお持ち込みください。
-
-国本刃物 上中野店
-〒700-0972
-岡山県岡山市北区上中野2丁目27-12
-電話番号：086-230-6551
-"""
-
-            elif uketorihouhou == "集荷依頼・LINEで位置情報を送る":
-                message = f"""{name}様
-
-📩 修理受付を受け付けました。
-
-次に、【集荷場所の位置情報】をこのLINEトークに送信してください。
-位置情報を送信すると、集荷場所の登録が完了します。
-
-━━━━━━━━━━━━
-📍 位置情報の送り方
-━━━━━━━━━━━━
-
-① このLINEトーク画面を開く
-
-② 画面左下の「＋」ボタンを押す
-
-③ 「位置情報」を選ぶ
-
-④ 集荷場所を地図で選ぶ
-
-⑤ 「送信」を押す
-
-━━━━━━━━━━━━
+    sameaddress = getvalue(record, "sameaddress", "")
+    henkyakuhouhou = getvalue(record, "henkyakuhouhou", "")
+    henkyakujusho = getvalue(record, "henkyakujusho", "")
+    henkyakubasho = getvalue(record, "henkyakubasho", "")
+    henkyakumapurl = getvalue(record, "henkyakumapurl", "")
+
+    text = f"""【修理進捗状況のご案内】
+
+受付番号：{record_id}
+現在のステータス：{status}
+
+■ お客様名
+{name}
 
 ■ 修理品情報
-メーカー：{maker}
-型番：{model}
-機番：{serial}
-
-※位置情報の送信が難しい場合は、店舗までご連絡ください。
-"""
-            
-            elif uketorihouhou == "集荷依頼・住所を入力する":
-                message = f"""{name}様
-
-📩 修理受付を受け付けました。
-
-入力いただいた住所をもとに集荷手配を進めます。
-
-■ 集荷住所
-{shukajusho}
-
-■ 集荷希望日
-{shukakiboubi if shukakiboubi else "未指定"}
-
-■ 集荷希望時間
-{shukakiboujikan if shukakiboujikan else "未指定"}
-"""
-
-            else:
-                message = f"""{name}様
-
-📩 修理受付を受け付けました。
-"""
-
-            sendlinemessage(lineuserid, message)
-
-        return {"status": "ok"}
-
-    except Exception as e:
-        print("登録エラー:", e)
-        return {
-            "status": "error",
-            "message": str(e)
-        }
-
-
-# ===== 通知URLクリック用 =====
-@app.route("/notify", methods=["GET"])
-def notify():
-    userid = request.args.get("user")
-    print("受信user:", userid)
-
-    try:
-        headers = {
-            "X-Cybozu-API-Token": KINTONE_API_TOKEN
-        }
-
-        query = f'lineid = "{userid}" order by $id desc limit 1'
-
-        params = {
-            "app": KINTONE_APP_ID,
-            "query": query
-        }
-
-        res = requests.get(
-            KINTONE_GET_URL,
-            headers=headers,
-            params=params
-        )
-
-        print("Kintone取得ステータス:", res.status_code)
-        print("Kintone取得本文:", res.text)
-
-        result = res.json()
-
-        if "records" not in result or len(result["records"]) == 0:
-            return "レコードなし"
-
-        record = result["records"][0]
-        recordid = getvalue(record, "$id", "")
-
-        name = getvalue(record, "customer_name", "")
-        maker = getvalue(record, "maker", "")
-        model = getvalue(record, "model", "")
-        serial = getvalue(record, "serial", "")
-        issue = getvalue(record, "issue", "")
-
-        mitsumorikingaku = getvalue(record, "mitsumorikingaku", "")
-        mitsumorinaiyo = getvalue(record, "mitsumorinaiyo", "")
-        kanryoyoteibi = getvalue(record, "kanryoyoteibi", "")
-        okurijobango = getvalue(record, "okurijobango", "")
-
-        pricetext = formatprice(mitsumorikingaku)
-        datetext = formatdate(kanryoyoteibi)
-
-        statusjp = getvalue(record, "ドロップダウン", "").strip()
-        print("取得ステータス:", statusjp)
-
-        statusmap = {
-            "⚪修理受付中": "received",
-            "📩集荷依頼済": "pickuprequested",
-            "🚚荷受待(店舗持込待ち)": "waitingarrival",
-            "🚶荷受待(店舗持込待ち)": "waitingarrival",
-            "🟡見積中": "estimating",
-            "📄見積提出済": "quoted",
-            "📦受注(部品待ち)": "waitingparts",
-            "✅修理完了連絡済": "repaircompleted",
-            "🚚発送完了": "shipped",
-            "🔴中止(返却)": "cancelreturn",
-            "❌中止(処分)": "canceldisposal"
-        }
-
-        statuscode = statusmap.get(statusjp, "unknown")
-        print("変換後:", statuscode)
-
-        quickreplyitems = None
-
-        if statuscode == "received":
-            message = f"""{name}様
-
-【修理受付中】
-
-この度は修理のご依頼ありがとうございます。
-
-順次対応しております。
-今しばらくお待ちください。
-"""
-
-        elif statuscode == "pickuprequested":
-            message = f"""{name}様
-
-【集荷依頼済】
-
-集荷手配が完了しております。
-出荷の準備をしてお待ちください。
-"""
-
-        elif statuscode == "waitingarrival":
-            message = f"""{name}様
-
-【荷受待】
-
-修理品の到着をお待ちしております。
-到着次第、確認を進めさせていただきます。
-"""
-
-        elif statuscode == "estimating":
-            message = f"""{name}様
-
-【見積中】
-
-現在お預かり品の状態を確認し、
-お見積りを作成しております。
-
-もうしばらくお待ちください。
-"""
-
-        elif statuscode == "quoted":
-            quickreplyitems = makerepairanswerbuttons(recordid)
-
-            message = f"""{name}様
-
-【見積提出済】
-
-お預かりしている修理品のお見積りが完了しました。
-
-■ 修理品情報
-メーカー：{maker}
-型番：{model}
-機番：{serial}
+メーカー：{maker or "未入力"}
+型番：{model or "未入力"}
+機番：{serial or "未入力"}
 
 ■ 故障内容
-{issue}
+{issue or "未入力"}
 
+■ 受け渡し方法
+{uketorihouhou or "未入力"}
+"""
+
+    if shukajusho or shukabasho:
+        text += "\n■ 集荷場所\n"
+        if shukajusho:
+            text += f"{shukajusho}\n"
+        if shukabasho:
+            text += f"{shukabasho}\n"
+        if mapurl:
+            text += f"{mapurl}\n"
+
+    if sameaddress or henkyakuhouhou or henkyakujusho or henkyakubasho:
+        text += "\n■ 返却場所\n"
+        if sameaddress:
+            text += f"集荷場所と同じ：{sameaddress}\n"
+        if henkyakuhouhou:
+            text += f"指定方法：{henkyakuhouhou}\n"
+        if henkyakujusho:
+            text += f"{henkyakujusho}\n"
+        if henkyakubasho:
+            text += f"{henkyakubasho}\n"
+        if henkyakumapurl:
+            text += f"{henkyakumapurl}\n"
+
+    if "見積" in status:
+        text += f"""
 ■ お見積り金額
-{pricetext}
+{estimate or "未入力"}
 
 ■ お見積り内容
-{mitsumorinaiyo if mitsumorinaiyo else "未入力"}
-
-■ 修理完了予定日
-{datetext}
+{estimate_detail or "未入力"}
 
 修理を進めるか、キャンセルされるかをご回答ください。
 """
 
-        elif statuscode == "waitingparts":
-            message = f"""{name}様
-
-【受注・部品待ち】
-
-修理のご依頼を承りました。
-
-現在、必要部品を手配しております。
-部品入荷後、修理作業を進めさせていただきます。
-
-■ 修理完了予定日
-{datetext}
+    if "発送" in status or "出荷" in status:
+        text += f"""
+■ お問い合わせ送り状番号
+{tracking or "未入力"}
 """
 
-        elif statuscode == "repaircompleted":
-            message = f"""{name}様
+    if due_date:
+        text += f"""
+■ 修理完了予定日
+{due_date}
+"""
 
-【修理完了】
+    return text
 
-お預かりしておりました修理品の修理が完了しました。
+
+def build_notify_message(record):
+    record_id = getvalue(record, "$id", "")
+    status = getvalue(record, "ドロップダウン", "")
+    name = getvalue(record, "customer_name", "")
+    maker = getvalue(record, "maker", "")
+    model = getvalue(record, "model", "")
+    serial = getvalue(record, "serial", "")
+    issue = getvalue(record, "issue", "")
+    estimate = getvalue(record, "mitsumorikingaku", "")
+    estimate_detail = getvalue(record, "mitsumorinaiyo", "")
+    due_date = getvalue(record, "kanryoyoteibi", "")
+    tracking = getvalue(record, "okurijobango", "")
+
+    if status == "⚪修理受付中":
+        return f"""修理のお申込みを受け付けました
+
+受付番号：{record_id}
+
+{name}様
+
+お申し込みありがとうございます。
+ただいま内容を確認しております。
+
+確認・準備が整い次第、次のご案内をお送りいたしますので少々お待ちください。"""
+
+    if status == "集荷依頼済":
+        return f"""修理品の集荷手配が完了しました
+
+受付番号：{record_id}
+
+指定の日時に配送業者が伺いますので、修理品のご準備をお願いいたします。"""
+
+    if status == "📄見積提出済" or "見積" in status:
+        return f"""修理のお見積りが届きました
+
+受付番号：{record_id}
+
+お預かりしている修理品のお見積りが完了しました。
+以下の見積より金額をご確認いただき、ご判断をお知らせください。
 
 ■ 修理品情報
-メーカー：{maker}
-型番：{model}
-機番：{serial}
+メーカー：{maker or "未入力"}
+型番：{model or "未入力"}
+機番：{serial or "未入力"}
 
 ■ 故障内容
-{issue}
+{issue or "未入力"}
 
-■ 修理金額
-{pricetext}
+■ お見積り金額
+{estimate or "未入力"}
 
-■ 修理内容
-{mitsumorinaiyo if mitsumorinaiyo else "未入力"}
+■ お見積り内容
+{estimate_detail or "未入力"}
 
-お手すきの際にご来店をお願いいたします。
+◎修理を進めるか、キャンセルされるかをご回答ください。"""
 
-国本刃物 上中野店
-〒700-0972
-岡山県岡山市北区上中野2丁目27-12
-電話番号：086-230-6551
-"""
+    if status == "受注":
+        return f"""修理作業を開始いたします
 
-        elif statuscode == "shipped":
-            message = f"""{name}様
+受付番号：{record_id}
 
-【発送完了】
-
-お預かりしておりました修理品を発送いたしました。
-
-■ 修理品情報
-メーカー：{maker}
-型番：{model}
-機番：{serial}
-
-■ 修理金額
-{pricetext}
-
-■ 送り状番号
-{okurijobango if okurijobango else "未入力"}
-
-配送状況は以下よりご確認ください。
-https://toi.kuronekoyamato.co.jp/cgi-bin/tneko
-
-よろしくお願いいたします。
-"""
-
-        elif statuscode == "cancelreturn":
-            message = f"""{name}様
-
-【中止（返却）】
-
-修理は中止となり、返却対応となります。
-
-詳細につきましては、別途ご案内いたします。
-"""
-
-        elif statuscode == "canceldisposal":
-            message = f"""{name}様
-
-【中止（処分）】
-
-修理は中止となり、処分対応となります。
-
-何卒ご了承ください。
-"""
-
-        else:
-            message = f"""{name}様
-
-ステータス不一致：
-{statusjp}
-"""
-
-        sendlinemessage(userid, message, quickreplyitems)
-        updatenotifyhistory(recordid, message)
-
-        return f"送信完了: {statusjp}"
-
-    except Exception as e:
-        print("通知エラー:", e)
-        return "通知処理エラー"
-
-
-# ===== LINE Webhook =====
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    try:
-        body = request.json
-        print("Webhook受信:", body)
-
-        events = body.get("events", [])
-
-        for event in events:
-            eventtype = event.get("type")
-            replytoken = event.get("replyToken")
-            userid = event.get("source", {}).get("userId")
-
-            # ===== Postback処理 =====
-            if eventtype == "postback":
-                postbackdata = event.get("postback", {}).get("data", "")
-                postbackdata = html.unescape(postbackdata)
-
-                print("Postback受信:", postbackdata)
-
-                parsed = parse_qs(postbackdata)
-                action = parsed.get("action", [""])[0]
-                recordid = parsed.get("recordid", [""])[0]
-
-                if action == "checkstatus" and recordid:
-                    record = getrecordbyid(recordid)
-
-                    if not record:
-                        replylinemessage(
-                            replytoken,
-                            "選択された修理情報が見つかりませんでした。"
-                        )
-                        continue
-
-                    replymessage = buildstatusmessage(record)
-
-                    if shouldshowrepairanswerbuttons(record):
-                        replylinemessage(
-                            replytoken,
-                            replymessage,
-                            makerepairanswerbuttons(recordid)
-                        )
-                    else:
-                        replylinemessage(replytoken, replymessage)
-
-                    continue
-
-                if action == "repairaccept" and recordid:
-                    updaterepairanswer(recordid, "修理する")
-
-                    record = getrecordbyid(recordid)
-
-                    maker = getvalue(record, "maker", "") if record else ""
-                    model = getvalue(record, "model", "") if record else ""
-                    serial = getvalue(record, "serial", "") if record else ""
-
-                    replymessage = f"""【修理受付完了】
-
-ご依頼ありがとうございます。
+修理実行のご連絡ありがとうございます。
 これより修理作業に入らせていただきます。
 
-完了次第、こちらのLINEにてご連絡いたします。
+完了まで今しばらくお待ちください。
 
-■ 修理品情報
-メーカー：{maker}
-型番：{model}
-機番：{serial}
-"""
+受取方法やお届け先の変更がある場合は、店舗へお電話にてご連絡ください。
 
-                    replylinemessage(replytoken, replymessage)
-                    continue
+上中野店 TEL：086-230-6551
+受付時間：7:00〜19:00"""
 
-                if action == "repaircancel" and recordid:
-                    updaterepairanswer(recordid, "キャンセル")
+    if "修理完了連絡済" in status and "発送" in status:
+        return f"""修理が完了いたしました
 
-                    record = getrecordbyid(recordid)
+受付番号：{record_id}
 
-                    maker = getvalue(record, "maker", "") if record else ""
-                    model = getvalue(record, "model", "") if record else ""
-                    serial = getvalue(record, "serial", "") if record else ""
+大変お待たせいたしました。
+修理作業が完了し、修理品のお荷物発送が完了いたしました。
 
-                    replymessage = f"""【キャンセル受付】
+■ お問い合わせ送り状番号
+{tracking or "未入力"}
 
-修理キャンセルを承りました。
+到着までもうしばらくお待ちください。
 
-■ 修理品情報
-メーカー：{maker}
-型番：{model}
-機番：{serial}
+この度は修理サービスをご利用いただき、誠にありがとうございました。"""
 
-返却方法をお選びください。
-"""
+    if "修理完了連絡済" in status and ("店頭" in status or "引取" in status or "受取" in status):
+        return f"""修理が完了いたしました
 
-                    replylinemessage(
-                        replytoken,
-                        replymessage,
-                        makecancelbuttons(recordid)
-                    )
-                    continue
+受付番号：{record_id}
 
-                if action == "cancelpickup" and recordid:
-                    updatecancelaction(recordid, "店舗引取")
+大変お待たせいたしました。
+修理作業が完了し、店頭にてお渡しの準備が整っております。
 
-                    record = getrecordbyid(recordid)
+ご都合の良いタイミングでご来店をお願いいたします。
+ご来店の際は、本LINE画面または受付番号をスタッフへご提示ください。"""
 
-                    maker = getvalue(record, "maker", "") if record else ""
-                    model = getvalue(record, "model", "") if record else ""
-                    serial = getvalue(record, "serial", "") if record else ""
+    if status == "完了・出荷済" or "完了" in status:
+        return f"""修理対応が完了しました
 
-                    replymessage = f"""【返却受付完了】
+受付番号：{record_id}
 
-修理品の店舗引取を承りました。
+この度は修理サービスをご利用いただき、誠にありがとうございました。"""
 
-■ 修理品情報
-メーカー：{maker}
-型番：{model}
-機番：{serial}
+    if status == "中止":
+        return f"""修理中止のお手続きについて
 
-キャンセル料が発生する場合は、
-商品返却時にお支払いください。
+受付番号：{record_id}
 
-ご来店をお待ちしております。
-"""
+修理中止のご連絡を承りました。
+利用規約の通り、見積料1,500円を頂戴いたします。
 
-                    replylinemessage(replytoken, replymessage)
-                    continue
+お預かりした修理品の
+【店舗引取・ご返送・当店にて処分】
+のご判断をお知らせください。"""
 
-                if action == "canceldisposal" and recordid:
-                    updatecancelaction(recordid, "処分")
+    return build_status_text(record)
 
-                    record = getrecordbyid(recordid)
 
-                    maker = getvalue(record, "maker", "") if record else ""
-                    model = getvalue(record, "model", "") if record else ""
-                    serial = getvalue(record, "serial", "") if record else ""
+def build_notify_quick_replies(record_id, status):
+    items = []
 
-                    replymessage = f"""【処分受付完了】
+    if status == "📄見積提出済" or "見積" in status:
+        items.append(
+            quick_reply_postback(
+                "修理する",
+                f"action=repair&recordid={record_id}",
+                "修理する"
+            )
+        )
+        items.append(
+            quick_reply_postback(
+                "キャンセル",
+                f"action=cancel&recordid={record_id}",
+                "キャンセル"
+            )
+        )
 
-お預かり品を処分いたします。
+    if status == "中止":
+        items.append(
+            quick_reply_postback(
+                "店舗引取",
+                f"action=cancel_store&recordid={record_id}",
+                "店舗引取"
+            )
+        )
+        items.append(
+            quick_reply_postback(
+                "返送",
+                f"action=cancel_return&recordid={record_id}",
+                "返送"
+            )
+        )
+        items.append(
+            quick_reply_postback(
+                "処分",
+                f"action=cancel_dispose&recordid={record_id}",
+                "処分"
+            )
+        )
 
-■ 修理品情報
-メーカー：{maker}
-型番：{model}
-機番：{serial}
+    return items
 
-キャンセル料が発生する場合は、
-ご来店時または別途ご案内の方法にてお支払いください。
-"""
 
-                    replylinemessage(replytoken, replymessage)
-                    continue
+# =========================
+# ルーティング
+# =========================
 
-            # ===== Message処理 =====
-            if eventtype != "message":
-                continue
+@app.route("/")
+def index():
+    return "LINE Kintone App is running."
 
+
+@app.route("/form")
+def form():
+    return render_template("form.html")
+
+
+@app.route("/submit", methods=["POST"])
+def submit():
+    data = request.get_json(force=True)
+
+    lineuserid = data.get("lineuserid", "")
+    name = data.get("name", "")
+    phone = data.get("phone", "")
+
+    maker = data.get("maker", "")
+    makerother = data.get("makerother", "")
+    model = data.get("model", "")
+    serial = data.get("serial", "")
+
+    issue = data.get("issue", "")
+    issueother = data.get("issueother", "")
+    symptomother = data.get("symptomother", "")
+
+    uketorihouhou = data.get("uketorihouhou", "")
+    shukajusho = data.get("shukajusho", "")
+    shukakiboubi = data.get("shukakiboubi", "")
+    shukakiboujikan = data.get("shukakiboujikan", "")
+
+    sameaddress = data.get("sameaddress", "")
+    henkyakuhouhou = data.get("henkyakuhouhou", "")
+    henkyakujusho = data.get("henkyakujusho", "")
+
+    coupon = data.get("coupon", "")
+    kiyakuagree = data.get("kiyakuagree", "")
+
+    notify_url = f"{PUBLIC_BASE_URL}/notify?user={lineuserid}"
+
+    record = {
+        "lineid": make_field(lineuserid),
+        "customer_name": make_field(name),
+        "phone": make_field(phone),
+
+        "maker": make_field(maker),
+        "makerother": make_field(makerother),
+        "model": make_field(model),
+        "serial": make_field(serial),
+
+        "issue": make_field(issue),
+        "issueother": make_field(issueother),
+        "symptomother": make_field(symptomother),
+
+        "uketorihouhou": make_field(uketorihouhou),
+        "shukajusho": make_field(shukajusho),
+        "shukakiboubi": make_field(shukakiboubi),
+        "shukakiboujikan": make_field(shukakiboujikan),
+
+        "sameaddress": make_field(sameaddress),
+        "henkyakuhouhou": make_field(henkyakuhouhou),
+        "henkyakujusho": make_field(henkyakujusho),
+
+        "coupon": make_field(coupon),
+        "kiyakuagree": make_field(kiyakuagree),
+
+        "notifyurl": make_field(notify_url),
+        "ドロップダウン": make_field("⚪修理受付中")
+    }
+
+    res = add_kintone_record(record)
+
+    if not res.ok:
+        return res.text, 500
+
+    result = res.json()
+    record_id = result.get("id", "")
+
+    message = f"""修理受付を受け付けました。
+
+受付番号：{record_id}
+
+{name}様
+
+お申し込みありがとうございます。
+内容を確認し、準備が整い次第ご案内いたします。"""
+
+    quick_items = []
+
+    if uketorihouhou == "集荷依頼・LINEで位置情報を送る":
+        message += """
+
+集荷場所をLINE位置情報で指定する場合は、下のボタンから位置情報を送信してください。"""
+        quick_items.append(quick_reply_location("📍 集荷場所を送る"))
+
+    if henkyakuhouhou == "LINEで位置情報を送る":
+        message += """
+
+返却場所もLINE位置情報で指定する場合は、集荷場所を送信した後に、続けて返却場所の位置情報も送信してください。"""
+        quick_items.append(quick_reply_location("📍 位置情報を送る"))
+
+    send_line_push(lineuserid, message, quick_items if quick_items else None)
+
+    return "OK", 200
+
+
+@app.route("/notify", methods=["GET"])
+def notify():
+    user_id = request.args.get("user", "")
+    record_id = request.args.get("recordid", "") or request.args.get("id", "")
+
+    if not user_id and not record_id:
+        return "user または recordid が必要です", 400
+
+    record = None
+
+    if record_id:
+        record = get_kintone_record(record_id)
+    else:
+        records = get_records_by_lineid(user_id, limit=1)
+        if records:
+            record = records[0]
+            record_id = getvalue(record, "$id", "")
+
+    if not record:
+        return "対象レコードが見つかりません", 404
+
+    if not user_id:
+        user_id = getvalue(record, "lineid", "")
+
+    if not user_id:
+        return "LINEユーザーIDがありません", 400
+
+    status = getvalue(record, "ドロップダウン", "")
+    message = build_notify_message(record)
+    past_message = getvalue(record, "notifymessage", "")
+
+    if past_message.strip() == message.strip():
+        print("重複通知スキップ:", status)
+        return f"既に同じ内容を通知済み: {status}", 200
+
+    quick_reply_items = build_notify_quick_replies(record_id, status)
+
+    send_line_push(
+        user_id,
+        message,
+        quick_reply_items if quick_reply_items else None
+    )
+
+    update_notify_history(record_id, message)
+
+    return f"送信完了: {status}", 200
+
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    body = request.get_json(force=True)
+    print("Webhook受信:", body)
+
+    events = body.get("events", [])
+
+    for event in events:
+        event_type = event.get("type")
+        source = event.get("source", {})
+        user_id = source.get("userId", "")
+        reply_token = event.get("replyToken", "")
+
+        if event_type == "message":
             message = event.get("message", {})
-            messagetype = message.get("type")
+            message_type = message.get("type")
 
-            # ===== 位置情報処理 =====
-            if messagetype == "location":
-                title = message.get("title", "")
-                address = message.get("address", "")
-                latitude = message.get("latitude", "")
-                longitude = message.get("longitude", "")
+            if message_type == "text":
+                text = message.get("text", "").strip()
+                print("受信メッセージ:", text)
+                print("受信userId:", user_id)
 
-                print("位置情報受信 title:", title)
-                print("位置情報受信 address:", address)
-                print("位置情報受信 latitude:", latitude)
-                print("位置情報受信 longitude:", longitude)
-
-                record = getlatestactiverecord(userid)
-
-                if not record:
-                    replylinemessage(
-                        replytoken,
-                        "修理受付情報が見つかりませんでした。先に修理受付フォームをご入力ください。"
-                    )
-                    continue
-
-                recordid = getvalue(record, "$id", "")
-                maker = getvalue(record, "maker", "")
-                model = getvalue(record, "model", "")
-                serial = getvalue(record, "serial", "")
-
-                mapurl = f"https://www.google.com/maps?q={latitude},{longitude}"
-
-                if title and address:
-                    shukabasho = f"{title}\n{address}"
-                elif address:
-                    shukabasho = address
-                elif title:
-                    shukabasho = title
+                if text == "修理問い合わせ":
+                    handle_repair_inquiry(user_id, reply_token)
+                elif text.isdigit():
+                    handle_record_number_inquiry(text, reply_token)
                 else:
-                    shukabasho = "位置情報"
+                    send_line_reply(
+                        reply_token,
+                        "メッセージありがとうございます。\n修理状況を確認する場合は「修理問い合わせ」と送信してください。"
+                    )
 
-                updatelocationinfo(
-                    recordid,
-                    shukabasho,
-                    latitude,
-                    longitude,
-                    mapurl
+            elif message_type == "location":
+                handle_location_message(user_id, reply_token, message)
+
+        elif event_type == "postback":
+            postback = event.get("postback", {})
+            data = html.unescape(postback.get("data", ""))
+            print("Postback受信:", data)
+            handle_postback(user_id, reply_token, data)
+
+    return "OK", 200
+
+
+# =========================
+# Webhook処理
+# =========================
+
+def handle_repair_inquiry(user_id, reply_token):
+    records = get_records_by_lineid(user_id, limit=10)
+
+    if not records:
+        send_line_reply(
+            reply_token,
+            "現在、このLINEアカウントに紐づく修理受付は見つかりませんでした。"
+        )
+        return
+
+    if len(records) == 1:
+        text = build_status_text(records[0])
+        send_line_reply(reply_token, text)
+        return
+
+    text = "複数の修理受付があります。\n確認したい受付を選んでください。"
+
+    quick_items = []
+
+    for record in records[:10]:
+        record_id = getvalue(record, "$id", "")
+        name = getvalue(record, "customer_name", "")
+        maker = getvalue(record, "maker", "")
+        model = getvalue(record, "model", "")
+        label = f"{record_id} {maker} {model}".strip()
+
+        if not label:
+            label = f"受付番号 {record_id}"
+
+        if len(label) > 20:
+            label = label[:20]
+
+        quick_items.append(
+            quick_reply_postback(
+                label,
+                f"action=checkstatus&recordid={record_id}",
+                label
+            )
+        )
+
+    send_line_reply(reply_token, text, quick_items)
+
+
+def handle_record_number_inquiry(record_number, reply_token):
+    record = get_kintone_record(record_number)
+
+    if not record:
+        send_line_reply(
+            reply_token,
+            "指定された受付番号の修理受付が見つかりませんでした。"
+        )
+        return
+
+    text = build_status_text(record)
+    send_line_reply(reply_token, text)
+
+
+def handle_location_message(user_id, reply_token, message):
+    address = message.get("address", "")
+    title = message.get("title", "")
+    latitude = message.get("latitude", "")
+    longitude = message.get("longitude", "")
+
+    print("位置情報受信 title:", title)
+    print("位置情報受信 address:", address)
+    print("位置情報受信 latitude:", latitude)
+    print("位置情報受信 longitude:", longitude)
+
+    location_text = address or title or "位置情報"
+
+    records = get_records_by_lineid(user_id, limit=5)
+
+    if not records:
+        send_line_reply(
+            reply_token,
+            "位置情報を受信しましたが、紐づく修理受付が見つかりませんでした。先に修理受付フォームを送信してください。"
+        )
+        return
+
+    target_record = records[0]
+    record_id = getvalue(target_record, "$id", "")
+
+    shukabasho = getvalue(target_record, "shukabasho", "")
+    henkyakuhouhou = getvalue(target_record, "henkyakuhouhou", "")
+    henkyakubasho = getvalue(target_record, "henkyakubasho", "")
+    sameaddress = getvalue(target_record, "sameaddress", "")
+
+    # ルール：
+    # 1. 集荷場所が未入力なら集荷場所として保存
+    # 2. 集荷場所が入力済み、返却場所がLINE位置情報指定、返却場所未入力なら返却場所として保存
+    # 3. それ以外は集荷場所として上書き
+    if not shukabasho:
+        res = update_location_pickup(record_id, location_text, latitude, longitude)
+
+        if res.ok:
+            if sameaddress == "はい" or henkyakuhouhou == "集荷場所と同じ":
+                send_line_reply(
+                    reply_token,
+                    "集荷場所の位置情報を登録しました。\n返却場所は集荷場所と同じとして登録しています。"
                 )
-
-                replymessage = f"""【位置情報受付完了】
-
-集荷場所を受け付けました。
-
-■ 修理品情報
-メーカー：{maker}
-型番：{model}
-機番：{serial}
-
-■ 集荷場所
-{shukabasho}
-
-■ 地図URL
-{mapurl}
-"""
-
-                replylinemessage(replytoken, replymessage)
-                continue
-
-            # ===== テキスト処理 =====
-            if messagetype != "text":
-                continue
-
-            usermessage = message.get("text", "").strip()
-
-            print("受信メッセージ:", usermessage)
-            print("受信userId:", userid)
-
-            if usermessage not in ["修理問い合わせ", "問い合わせ", "状況確認"]:
-                replylinemessage(
-                    replytoken,
-                    "修理状況を確認する場合は「修理問い合わせ」と送信してください。\n集荷場所を送る場合は、LINEの位置情報送信をご利用ください。"
+            elif henkyakuhouhou == "LINEで位置情報を送る":
+                send_line_reply(
+                    reply_token,
+                    "集荷場所の位置情報を登録しました。\n返却場所が違う場合は、続けて返却場所の位置情報を送信してください。"
                 )
-                continue
-
-            records = getrecordsbyuser(userid)
-
-            if len(records) == 0:
-                replylinemessage(
-                    replytoken,
-                    "現在、修理受付情報が見つかりませんでした。"
+            else:
+                send_line_reply(
+                    reply_token,
+                    "集荷場所の位置情報を登録しました。"
                 )
-                continue
+        else:
+            send_line_reply(
+                reply_token,
+                "位置情報の登録に失敗しました。お手数ですが店舗までご連絡ください。"
+            )
+        return
 
-            closedstatuses = [
-                "●完了(精算済)",
-                "🔴中止(返却)",
-                "❌中止(処分)"
+    if henkyakuhouhou == "LINEで位置情報を送る" and not henkyakubasho:
+        res = update_location_return(record_id, location_text, latitude, longitude)
+
+        if res.ok:
+            send_line_reply(
+                reply_token,
+                "返却場所の位置情報を登録しました。"
+            )
+        else:
+            send_line_reply(
+                reply_token,
+                "返却場所の登録に失敗しました。お手数ですが店舗までご連絡ください。"
+            )
+        return
+
+    res = update_location_pickup(record_id, location_text, latitude, longitude)
+
+    if res.ok:
+        send_line_reply(
+            reply_token,
+            "位置情報を登録しました。"
+        )
+    else:
+        send_line_reply(
+            reply_token,
+            "位置情報の登録に失敗しました。お手数ですが店舗までご連絡ください。"
+        )
+
+
+def handle_postback(user_id, reply_token, data):
+    parsed = parse_qs(data)
+
+    action = parsed.get("action", [""])[0]
+    record_id = parsed.get("recordid", [""])[0]
+
+    if not action or not record_id:
+        send_line_reply(reply_token, "操作内容を確認できませんでした。")
+        return
+
+    if action == "checkstatus":
+        record = get_kintone_record(record_id)
+
+        if not record:
+            send_line_reply(reply_token, "対象の修理受付が見つかりませんでした。")
+            return
+
+        text = build_status_text(record)
+        send_line_reply(reply_token, text)
+        return
+
+    if action == "repair":
+        res = update_repair_answer(record_id, "修理する")
+
+        if res.ok:
+            send_line_reply(
+                reply_token,
+                "修理進行のご回答を受け付けました。\nこれより修理作業を進めさせていただきます。"
+            )
+        else:
+            send_line_reply(
+                reply_token,
+                "回答の登録に失敗しました。お手数ですが店舗までご連絡ください。"
+            )
+        return
+
+    if action == "cancel":
+        res = update_repair_answer(record_id, "キャンセル")
+
+        if res.ok:
+            text = """キャンセルのご回答を受け付けました。
+
+お預かりしている修理品について、今後の対応を選択してください。"""
+
+            quick_items = [
+                quick_reply_postback(
+                    "店舗引取",
+                    f"action=cancel_store&recordid={record_id}",
+                    "店舗引取"
+                ),
+                quick_reply_postback(
+                    "返送",
+                    f"action=cancel_return&recordid={record_id}",
+                    "返送"
+                ),
+                quick_reply_postback(
+                    "処分",
+                    f"action=cancel_dispose&recordid={record_id}",
+                    "処分"
+                )
             ]
 
-            activerecords = []
-
-            for record in records:
-                status = getvalue(record, "ドロップダウン", "").strip()
-                if status not in closedstatuses:
-                    activerecords.append(record)
-
-            if len(activerecords) == 0:
-                replylinemessage(
-                    replytoken,
-                    "現在、進行中の修理受付情報はありません。"
-                )
-                continue
-
-            if len(activerecords) == 1:
-                replymessage = buildstatusmessage(activerecords[0])
-                recordid = getvalue(activerecords[0], "$id", "")
-
-                if shouldshowrepairanswerbuttons(activerecords[0]):
-                    replylinemessage(
-                        replytoken,
-                        replymessage,
-                        makerepairanswerbuttons(recordid)
-                    )
-                else:
-                    replylinemessage(replytoken, replymessage)
-
-                continue
-
-            replylinequickreply(
-                replytoken,
-                "現在、複数の修理品をお預かりしています。\n確認したい修理品を選択してください。",
-                activerecords
+            send_line_reply(reply_token, text, quick_items)
+        else:
+            send_line_reply(
+                reply_token,
+                "キャンセル回答の登録に失敗しました。お手数ですが店舗までご連絡ください。"
             )
+        return
 
-        return "OK"
+    if action == "cancel_store":
+        res = update_cancel_action(record_id, "店舗引取")
 
-    except Exception as e:
-        print("Webhookエラー:", e)
-        return "OK"
+        if res.ok:
+            send_line_reply(
+                reply_token,
+                "店舗引取で承りました。\n店頭でのお渡し準備を進めます。"
+            )
+        else:
+            send_line_reply(reply_token, "登録に失敗しました。")
+        return
 
+    if action == "cancel_return":
+        res = update_cancel_action(record_id, "返送")
+
+        if res.ok:
+            send_line_reply(
+                reply_token,
+                "返送で承りました。\n着払いでの返送手配を進めます。"
+            )
+        else:
+            send_line_reply(reply_token, "登録に失敗しました。")
+        return
+
+    if action == "cancel_dispose":
+        res = update_cancel_action(record_id, "処分")
+
+        if res.ok:
+            send_line_reply(
+                reply_token,
+                "処分で承りました。\n当店にて適切に処分いたします。"
+            )
+        else:
+            send_line_reply(reply_token, "登録に失敗しました。")
+        return
+
+    send_line_reply(reply_token, "未対応の操作です。")
+
+
+# =========================
+# 起動
+# =========================
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
