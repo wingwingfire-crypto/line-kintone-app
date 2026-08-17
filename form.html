@@ -308,6 +308,14 @@ button:hover:not(:disabled) {
     color: #24345f;
 }
 
+.return-box {
+    background: #fffdf4;
+    border: 1px solid #f0df9b;
+    border-radius: 14px;
+    padding: 14px;
+    margin-top: 18px;
+}
+
 @media (min-width: 720px) {
     .method-grid {
         grid-template-columns: repeat(2, 1fr);
@@ -377,33 +385,38 @@ button:hover:not(:disabled) {
 
             <div class="checkbox-group" id="issueGroup">
                 <label class="check-item">
-                    <input type="checkbox" name="issueCheck" value="電源が入らない">
-                    電源が入らない
+                    <input type="checkbox" name="issueCheck" value="空打ちする（釘が出ない）">
+                    空打ちする（釘が出ない）
                 </label>
 
                 <label class="check-item">
-                    <input type="checkbox" name="issueCheck" value="動作しない">
-                    動作しない
+                    <input type="checkbox" name="issueCheck" value="エアー漏れ">
+                    エアー漏れ
                 </label>
 
                 <label class="check-item">
-                    <input type="checkbox" name="issueCheck" value="異音がする">
-                    異音がする
+                    <input type="checkbox" name="issueCheck" value="ピストンが戻らない">
+                    ピストンが戻らない
                 </label>
 
                 <label class="check-item">
-                    <input type="checkbox" name="issueCheck" value="充電できない">
-                    充電できない
+                    <input type="checkbox" name="issueCheck" value="釘詰まりが頻繁に起きる">
+                    釘詰まりが頻繁に起きる
                 </label>
 
                 <label class="check-item">
-                    <input type="checkbox" name="issueCheck" value="エア漏れ">
-                    エア漏れ
+                    <input type="checkbox" name="issueCheck" value="打ち込みが浅い">
+                    打ち込みが浅い
                 </label>
 
                 <label class="check-item">
-                    <input type="checkbox" name="issueCheck" value="破損している">
-                    破損している
+                    <input type="checkbox" name="issueCheck" value="トリガーを引いても無反応">
+                    トリガーを引いても無反応
+                </label>
+
+                <label class="check-item">
+                    <input type="checkbox" name="issueCheck" value="オーバーホール">
+                    オーバーホール
                 </label>
 
                 <label class="check-item">
@@ -417,7 +430,7 @@ button:hover:not(:disabled) {
                 <input type="text" id="issueOther" name="issueOther" placeholder="故障内容を入力してください">
             </div>
 
-            <label>その他症状 <span class="optional">任意</span></label>
+            <label>補足症状 <span class="optional">任意</span></label>
             <textarea id="symptomOther" name="symptomOther" placeholder="症状の詳細、発生タイミングなどがあれば入力してください"></textarea>
         </div>
 
@@ -458,7 +471,7 @@ button:hover:not(:disabled) {
                 </div>
 
                 <div id="locationGuideBox" class="guide-box hidden">
-                    <strong>📍 位置情報を送る流れ</strong>
+                    <strong>📍 集荷場所の位置情報を送る流れ</strong>
 
                     <div class="guide-step">① フォーム送信後、このLINEトーク画面を開く</div>
                     <div class="guide-step">② 画面左下の「＋」ボタンを押す</div>
@@ -472,7 +485,7 @@ button:hover:not(:disabled) {
         </div>
 
         <div class="card hidden" id="pickupInfoCard">
-            <h2 class="section-title">5. 集荷情報</h2>
+            <h2 class="section-title">5. 集荷・返却情報</h2>
 
             <div id="addressInputBox" class="hidden">
                 <label>郵便番号 <span class="optional">任意</span></label>
@@ -518,6 +531,62 @@ button:hover:not(:disabled) {
                 <option value="16時〜18時">16時〜18時</option>
                 <option value="18時〜20時">18時〜20時</option>
             </select>
+
+            <div id="returnInfoBox" class="return-box">
+                <label>返却場所 <span class="required">必須</span></label>
+
+                <input type="hidden" id="sameaddress" name="sameaddress">
+                <input type="hidden" id="henkyakuhouhou" name="henkyakuhouhou">
+
+                <div class="method-grid">
+                    <div class="method-card" data-return-same="はい">
+                        <strong>集荷場所と同じ</strong>
+                        <span>修理完了後、集荷場所と同じ場所へ返却します</span>
+                    </div>
+
+                    <div class="method-card" data-return-same="いいえ">
+                        <strong>集荷場所と違う</strong>
+                        <span>返却場所を別で指定します</span>
+                    </div>
+                </div>
+
+                <div id="returnMethodBox" class="sub-card hidden">
+                    <label>返却場所の指定方法 <span class="required">必須</span></label>
+
+                    <div class="method-grid">
+                        <div class="method-card" data-return-method="住所を入力する">
+                            <strong>住所を入力する</strong>
+                            <span>返却先住所をフォームに入力</span>
+                        </div>
+
+                        <div class="method-card" data-return-method="LINEで位置情報を送る">
+                            <strong>LINEで位置情報を送る</strong>
+                            <span>フォーム送信後、LINEで返却場所の位置情報を送信</span>
+                        </div>
+                    </div>
+
+                    <div id="returnAddressBox" class="hidden">
+                        <label>返却住所 <span class="required">必須</span></label>
+                        <textarea
+                            id="henkyakujusho"
+                            name="henkyakujusho"
+                            placeholder="例：岡山県岡山市北区〇〇 1-2-3"
+                        ></textarea>
+                    </div>
+
+                    <div id="returnLocationGuideBox" class="guide-box hidden">
+                        <strong>📍 返却場所の位置情報を送る流れ</strong>
+
+                        <div class="guide-step">① フォーム送信後、このLINEトーク画面を開く</div>
+                        <div class="guide-step">② 画面左下の「＋」ボタンを押す</div>
+                        <div class="guide-step">③ 「位置情報」を選ぶ</div>
+                        <div class="guide-step">④ 返却場所を地図で選ぶ</div>
+                        <div class="guide-step">⑤ 「送信」を押す</div>
+
+                        <p class="hint">返却場所の位置情報として登録します。</p>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="card">
@@ -635,6 +704,8 @@ document.querySelectorAll("[data-main-method]").forEach(card => {
         document.getElementById("pickupMethod").value = "";
 
         document.querySelectorAll("[data-pickup-method]").forEach(c => c.classList.remove("active"));
+        document.querySelectorAll("[data-return-same]").forEach(c => c.classList.remove("active"));
+        document.querySelectorAll("[data-return-method]").forEach(c => c.classList.remove("active"));
 
         const uketorihouhou = document.getElementById("uketorihouhou");
         const pickupMethodBox = document.getElementById("pickupMethodBox");
@@ -643,6 +714,8 @@ document.querySelectorAll("[data-main-method]").forEach(card => {
         const locationGuideBox = document.getElementById("locationGuideBox");
         const shukajusho = document.getElementById("shukajusho");
         const zipcode = document.getElementById("zipcode");
+
+        resetReturnFields();
 
         if (mainMethod === "店舗持ち込み") {
             uketorihouhou.value = "店舗持ち込み";
@@ -706,6 +779,93 @@ document.querySelectorAll("[data-pickup-method]").forEach(card => {
     });
 });
 
+document.querySelectorAll("[data-return-same]").forEach(card => {
+    card.addEventListener("click", function () {
+        document.querySelectorAll("[data-return-same]").forEach(c => c.classList.remove("active"));
+        this.classList.add("active");
+
+        const same = this.dataset.returnSame;
+
+        document.getElementById("sameaddress").value = same;
+
+        const returnMethodBox = document.getElementById("returnMethodBox");
+        const returnAddressBox = document.getElementById("returnAddressBox");
+        const returnLocationGuideBox = document.getElementById("returnLocationGuideBox");
+        const henkyakuhouhou = document.getElementById("henkyakuhouhou");
+        const henkyakujusho = document.getElementById("henkyakujusho");
+
+        document.querySelectorAll("[data-return-method]").forEach(c => c.classList.remove("active"));
+
+        if (same === "はい") {
+            returnMethodBox.classList.add("hidden");
+            returnAddressBox.classList.add("hidden");
+            returnLocationGuideBox.classList.add("hidden");
+
+            henkyakuhouhou.value = "集荷場所と同じ";
+            henkyakujusho.required = false;
+
+            const shukajusho = document.getElementById("shukajusho").value.trim();
+
+            if (shukajusho) {
+                henkyakujusho.value = shukajusho;
+            } else {
+                henkyakujusho.value = "集荷場所と同じ";
+            }
+        }
+
+        if (same === "いいえ") {
+            returnMethodBox.classList.remove("hidden");
+            returnAddressBox.classList.add("hidden");
+            returnLocationGuideBox.classList.add("hidden");
+
+            henkyakuhouhou.value = "";
+            henkyakujusho.value = "";
+            henkyakujusho.required = false;
+        }
+    });
+});
+
+document.querySelectorAll("[data-return-method]").forEach(card => {
+    card.addEventListener("click", function () {
+        document.querySelectorAll("[data-return-method]").forEach(c => c.classList.remove("active"));
+        this.classList.add("active");
+
+        const method = this.dataset.returnMethod;
+
+        const henkyakuhouhou = document.getElementById("henkyakuhouhou");
+        const returnAddressBox = document.getElementById("returnAddressBox");
+        const returnLocationGuideBox = document.getElementById("returnLocationGuideBox");
+        const henkyakujusho = document.getElementById("henkyakujusho");
+
+        henkyakuhouhou.value = method;
+
+        if (method === "住所を入力する") {
+            returnAddressBox.classList.remove("hidden");
+            returnLocationGuideBox.classList.add("hidden");
+
+            henkyakujusho.required = true;
+        }
+
+        if (method === "LINEで位置情報を送る") {
+            returnAddressBox.classList.add("hidden");
+            returnLocationGuideBox.classList.remove("hidden");
+
+            henkyakujusho.required = false;
+            henkyakujusho.value = "";
+        }
+    });
+});
+
+document.getElementById("shukajusho").addEventListener("input", function () {
+    const sameaddress = document.getElementById("sameaddress").value;
+    const henkyakujusho = document.getElementById("henkyakujusho");
+
+    if (sameaddress === "はい") {
+        const value = this.value.trim();
+        henkyakujusho.value = value ? value : "集荷場所と同じ";
+    }
+});
+
 document.getElementById("zipSearchBtn").addEventListener("click", async function () {
     const zipcodeInput = document.getElementById("zipcode");
     const addressInput = document.getElementById("shukajusho");
@@ -746,6 +906,11 @@ document.getElementById("zipSearchBtn").addEventListener("click", async function
 
         addressInput.value = address;
 
+        const sameaddress = document.getElementById("sameaddress").value;
+        if (sameaddress === "はい") {
+            document.getElementById("henkyakujusho").value = address;
+        }
+
     } catch (err) {
         console.error("郵便番号検索エラー:", err);
         alert("住所検索に失敗しました。手入力してください。");
@@ -754,6 +919,21 @@ document.getElementById("zipSearchBtn").addEventListener("click", async function
         this.textContent = "住所検索";
     }
 });
+
+function resetReturnFields() {
+    document.getElementById("sameaddress").value = "";
+    document.getElementById("henkyakuhouhou").value = "";
+    document.getElementById("henkyakujusho").value = "";
+
+    document.getElementById("henkyakujusho").required = false;
+
+    document.getElementById("returnMethodBox").classList.add("hidden");
+    document.getElementById("returnAddressBox").classList.add("hidden");
+    document.getElementById("returnLocationGuideBox").classList.add("hidden");
+
+    document.querySelectorAll("[data-return-same]").forEach(c => c.classList.remove("active"));
+    document.querySelectorAll("[data-return-method]").forEach(c => c.classList.remove("active"));
+}
 
 function getSelectedIssues() {
     const checked = Array.from(document.querySelectorAll('input[name="issueCheck"]:checked'));
@@ -785,6 +965,21 @@ function validateForm() {
     if (!uketorihouhou) {
         alert("受け渡し方法を選択してください。");
         return false;
+    }
+
+    if (mainMethod === "集荷依頼") {
+        const sameaddress = document.getElementById("sameaddress").value;
+        const henkyakuhouhou = document.getElementById("henkyakuhouhou").value;
+
+        if (!sameaddress) {
+            alert("返却場所を選択してください。");
+            return false;
+        }
+
+        if (sameaddress === "いいえ" && !henkyakuhouhou) {
+            alert("返却場所の指定方法を選択してください。");
+            return false;
+        }
     }
 
     if (!document.getElementById("kiyakuagree").checked) {
@@ -840,6 +1035,10 @@ document.getElementById("repairForm").addEventListener("submit", async function 
             shukakiboubi: document.getElementById("shukakiboubi").value,
             shukakiboujikan: document.getElementById("shukakiboujikan").value,
 
+            sameaddress: document.getElementById("sameaddress").value,
+            henkyakuhouhou: document.getElementById("henkyakuhouhou").value,
+            henkyakujusho: document.getElementById("henkyakujusho").value.trim(),
+
             coupon: document.getElementById("coupon").value.trim(),
             kiyakuagree: document.getElementById("kiyakuagree").checked ? "同意済み" : ""
         };
@@ -877,7 +1076,7 @@ document.getElementById("repairForm").addEventListener("submit", async function 
                     <strong>集荷場所の位置情報</strong>を送信してください。<br><br>
 
                     <div class="guide-box">
-                        <strong>📍 位置情報の送り方</strong>
+                        <strong>📍 集荷場所の位置情報の送り方</strong>
 
                         <div class="guide-step">① このLINEトーク画面を開く</div>
                         <div class="guide-step">② 画面左下の「＋」ボタンを押す</div>
@@ -906,6 +1105,16 @@ document.getElementById("repairForm").addEventListener("submit", async function 
             `;
         }
 
+        if (document.getElementById("henkyakuhouhou").value === "LINEで位置情報を送る") {
+            successText += `
+                <div class="success-box" style="margin-top:12px;">
+                    <strong>📍 返却場所について</strong><br>
+                    返却場所もLINE位置情報で指定する場合は、続けて返却場所の位置情報を送信してください。<br>
+                    ※次工程で、返却場所用の位置情報保存処理をapp.pyに追加します。
+                </div>
+            `;
+        }
+
         msg.innerHTML = successText;
 
         document.getElementById("repairForm").reset();
@@ -922,6 +1131,8 @@ document.getElementById("repairForm").addEventListener("submit", async function 
         document.getElementById("uketorihouhou").value = "";
         document.getElementById("mainMethod").value = "";
         document.getElementById("pickupMethod").value = "";
+
+        resetReturnFields();
 
         window.scrollTo({
             top: document.body.scrollHeight,
