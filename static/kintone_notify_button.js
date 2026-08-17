@@ -20,7 +20,7 @@
         const lineId = record.lineid && record.lineid.value ? record.lineid.value : "";
         const status = record["ドロップダウン"] && record["ドロップダウン"].value ? record["ドロップダウン"].value : "";
         const customerName = record.customer_name && record.customer_name.value ? record.customer_name.value : "";
-        const notifyUrlField = record.notifyurl && record.notifyurl.value ? record.notifyurl.value : "";
+        const lastNotify = record.lastnotify && record.lastnotify.value ? record.lastnotify.value : "";
 
         const buttonArea = document.createElement("div");
         buttonArea.id = "lineNotifyButtonArea";
@@ -53,7 +53,11 @@
             button.style.cursor = "not-allowed";
             statusText.textContent = "LINE IDがないため通知できません";
         } else {
-            statusText.textContent = "現在の進捗：" + (status || "未設定");
+            if (lastNotify) {
+                statusText.textContent = "前回通知あり / 現在の進捗：" + (status || "未設定");
+            } else {
+                statusText.textContent = "未通知 / 現在の進捗：" + (status || "未設定");
+            }
         }
 
         button.addEventListener("mouseover", function () {
@@ -78,24 +82,21 @@
                 "この内容でLINE通知を送信しますか？\n\n" +
                 "お客様名：" + (customerName || "未入力") + "\n" +
                 "進捗状況：" + (status || "未設定") + "\n" +
-                "レコード番号：" + recordId;
+                "レコード番号：" + recordId + "\n\n" +
+                "※前回と同じ内容の場合は、LINE送信せず「通知済み」と表示されます。\n" +
+                "※見積金額や見積内容などが変わっていれば、再送信されます。";
 
             if (!window.confirm(confirmMessage)) {
                 return;
             }
 
             button.disabled = true;
-            button.textContent = "送信中...";
+            button.textContent = "確認中...";
             button.style.background = "#999";
-            statusText.textContent = "LINE通知を送信しています...";
+            statusText.textContent = "LINE通知内容を確認しています...";
 
-            let notifyUrl = "";
-
-            if (notifyUrlField) {
-                notifyUrl = notifyUrlField;
-            } else {
-                notifyUrl = NOTIFY_BASE_URL + "?recordid=" + encodeURIComponent(recordId);
-            }
+            // notifyurlフィールドではなく、今開いているレコードIDを指定する
+            const notifyUrl = NOTIFY_BASE_URL + "?recordid=" + encodeURIComponent(recordId);
 
             fetch(notifyUrl, {
                 method: "GET",
@@ -115,11 +116,30 @@
                         throw new Error("HTTP " + result.status + " : " + result.text);
                     }
 
-                    button.textContent = "✅ 送信済み";
-                    button.style.background = "#2e7d32";
-                    statusText.textContent = "LINE通知を送信しました";
+                    if (result.text.indexOf("既に同じ内容を通知済み") !== -1) {
+                        button.textContent = "通知済み";
+                        button.style.background = "#607d8b";
+                        statusText.textContent = "既に同じ内容を通知済みです";
 
-                    alert("LINE通知を送信しました。");
+                        alert("既に同じ内容を通知済みです。\n\n見積金額や見積内容などを変更すると、再度送信できます。");
+                        return;
+                    }
+
+                    if (result.text.indexOf("送信完了") !== -1) {
+                        button.textContent = "✅ 送信済み";
+                        button.style.background = "#2e7d32";
+                        statusText.textContent = "LINE通知を送信しました";
+
+                        alert("LINE通知を送信しました。");
+                        return;
+                    }
+
+                    // その他の200レスポンス
+                    button.textContent = "完了";
+                    button.style.background = "#2e7d32";
+                    statusText.textContent = result.text || "処理が完了しました";
+
+                    alert(result.text || "処理が完了しました。");
                 })
                 .catch(function (error) {
                     console.error("LINE通知送信エラー:", error);
