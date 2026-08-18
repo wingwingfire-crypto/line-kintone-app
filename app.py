@@ -8,12 +8,20 @@ from urllib.parse import parse_qs
 from flask import Flask, request, render_template
 
 app = Flask(__name__)
+
+
+# =========================
+# CORS設定
+# =========================
+
 @app.after_request
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "https://9oh3c.cybozu.com"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
+
+
 # =========================
 # 基本設定
 # =========================
@@ -84,6 +92,19 @@ def escape_kintone_query_value(value):
 def make_field(value):
     return {"value": value if value is not None else ""}
 
+
+def format_yen(value):
+    if value is None or value == "":
+        return "未入力"
+    try:
+        return f"{int(float(value)):,}円"
+    except Exception:
+        return str(value)
+
+
+# =========================
+# LINE送信
+# =========================
 
 def send_line_reply(reply_token, text, quick_reply_items=None):
     message = {
@@ -333,8 +354,11 @@ def update_repair_answer(record_id, answer):
     if answer == "修理する":
         fields["ドロップダウン"] = make_field("受注")
 
+    # 注意：
+    # Kintoneのドロップダウンに「中止」がない場合があるため、
+    # キャンセル時はドロップダウンを変更せず、shurikahikaitoのみ保存します。
     if answer == "キャンセル":
-        fields["ドロップダウン"] = make_field("中止")
+        pass
 
     return update_kintone_record(record_id, fields)
 
@@ -348,7 +372,7 @@ def update_cancel_action(record_id, action):
 
 
 # =========================
-# 表示・文面作成
+# LINE通知文・カード作成
 # =========================
 
 def build_status_text(record):
@@ -544,19 +568,224 @@ def build_notify_message(record):
 
 この度は修理サービスをご利用いただき、誠にありがとうございました。"""
 
-    if status == "中止":
-        return f"""修理中止のお手続きについて
-
-受付番号：{record_id}
-
-修理中止のご連絡を承りました。
-利用規約の通り、見積料1,500円を頂戴いたします。
-
-お預かりした修理品の
-【店舗引取・ご返送・当店にて処分】
-のご判断をお知らせください。"""
-
     return build_status_text(record)
+
+
+def build_estimate_flex_message(record):
+    record_id = getvalue(record, "$id", "")
+    name = getvalue(record, "customer_name", "")
+    maker = getvalue(record, "maker", "")
+    model = getvalue(record, "model", "")
+    serial = getvalue(record, "serial", "")
+    issue = getvalue(record, "issue", "")
+    estimate = getvalue(record, "mitsumorikingaku", "")
+    estimate_detail = getvalue(record, "mitsumorinaiyo", "")
+
+    display_issue = issue or "未入力"
+    display_estimate_detail = estimate_detail or "未入力"
+
+    if len(display_issue) > 70:
+        display_issue = display_issue[:70] + "..."
+
+    if len(display_estimate_detail) > 80:
+        display_estimate_detail = display_estimate_detail[:80] + "..."
+
+    return {
+        "type": "flex",
+        "altText": "修理のお見積りが届きました",
+        "contents": {
+            "type": "bubble",
+            "size": "mega",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#06C755",
+                "paddingAll": "16px",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "📄 修理見積が届きました",
+                        "weight": "bold",
+                        "size": "lg",
+                        "color": "#FFFFFF",
+                        "wrap": True
+                    },
+                    {
+                        "type": "text",
+                        "text": f"受付番号：{record_id}",
+                        "size": "sm",
+                        "color": "#E8F5E9",
+                        "margin": "sm"
+                    }
+                ]
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "md",
+                "contents": [
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "spacing": "xs",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": f"{name or 'お客様'} 様",
+                                "weight": "bold",
+                                "size": "md",
+                                "color": "#222222",
+                                "wrap": True
+                            },
+                            {
+                                "type": "text",
+                                "text": "修理品のお見積りが完了しました。",
+                                "size": "sm",
+                                "color": "#666666",
+                                "wrap": True
+                            }
+                        ]
+                    },
+                    {
+                        "type": "separator",
+                        "margin": "md"
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "spacing": "sm",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "修理品情報",
+                                "size": "sm",
+                                "weight": "bold",
+                                "color": "#06C755"
+                            },
+                            {
+                                "type": "text",
+                                "text": f"メーカー：{maker or '未入力'}",
+                                "size": "sm",
+                                "color": "#333333",
+                                "wrap": True
+                            },
+                            {
+                                "type": "text",
+                                "text": f"型番：{model or '未入力'}",
+                                "size": "sm",
+                                "color": "#333333",
+                                "wrap": True
+                            },
+                            {
+                                "type": "text",
+                                "text": f"機番：{serial or '未入力'}",
+                                "size": "sm",
+                                "color": "#333333",
+                                "wrap": True
+                            }
+                        ]
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "spacing": "sm",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "故障内容",
+                                "size": "sm",
+                                "weight": "bold",
+                                "color": "#06C755"
+                            },
+                            {
+                                "type": "text",
+                                "text": display_issue,
+                                "size": "sm",
+                                "color": "#333333",
+                                "wrap": True
+                            }
+                        ]
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "backgroundColor": "#F3FFF7",
+                        "cornerRadius": "12px",
+                        "paddingAll": "14px",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "お見積り金額",
+                                "size": "sm",
+                                "weight": "bold",
+                                "color": "#06C755"
+                            },
+                            {
+                                "type": "text",
+                                "text": format_yen(estimate),
+                                "size": "xxl",
+                                "weight": "bold",
+                                "color": "#111111",
+                                "margin": "sm",
+                                "wrap": True
+                            }
+                        ]
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "spacing": "sm",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "お見積り内容",
+                                "size": "sm",
+                                "weight": "bold",
+                                "color": "#06C755"
+                            },
+                            {
+                                "type": "text",
+                                "text": display_estimate_detail,
+                                "size": "sm",
+                                "color": "#333333",
+                                "wrap": True
+                            }
+                        ]
+                    }
+                ]
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    {
+                        "type": "button",
+                        "style": "primary",
+                        "height": "sm",
+                        "color": "#06C755",
+                        "action": {
+                            "type": "postback",
+                            "label": "修理する",
+                            "data": f"action=repair&recordid={record_id}",
+                            "displayText": "修理する"
+                        }
+                    },
+                    {
+                        "type": "button",
+                        "style": "secondary",
+                        "height": "sm",
+                        "action": {
+                            "type": "postback",
+                            "label": "キャンセルする",
+                            "data": f"action=cancel&recordid={record_id}",
+                            "displayText": "キャンセルする"
+                        }
+                    }
+                ]
+            }
+        }
+    }
 
 
 def build_notify_quick_replies(record_id, status):
@@ -575,29 +804,6 @@ def build_notify_quick_replies(record_id, status):
                 "キャンセル",
                 f"action=cancel&recordid={record_id}",
                 "キャンセル"
-            )
-        )
-
-    if status == "中止":
-        items.append(
-            quick_reply_postback(
-                "店舗引取",
-                f"action=cancel_store&recordid={record_id}",
-                "店舗引取"
-            )
-        )
-        items.append(
-            quick_reply_postback(
-                "返送",
-                f"action=cancel_return&recordid={record_id}",
-                "返送"
-            )
-        )
-        items.append(
-            quick_reply_postback(
-                "処分",
-                f"action=cancel_dispose&recordid={record_id}",
-                "処分"
             )
         )
 
@@ -726,8 +932,11 @@ def submit():
     return "OK", 200
 
 
-@app.route("/notify", methods=["GET"])
+@app.route("/notify", methods=["GET", "OPTIONS"])
 def notify():
+    if request.method == "OPTIONS":
+        return "", 204
+
     user_id = request.args.get("user", "")
     record_id = request.args.get("recordid", "") or request.args.get("id", "")
 
@@ -761,13 +970,19 @@ def notify():
         print("重複通知スキップ:", status)
         return f"既に同じ内容を通知済み: {status}", 200
 
-    quick_reply_items = build_notify_quick_replies(record_id, status)
+    if status == "📄見積提出済" or "見積" in status:
+        flex_message = build_estimate_flex_message(record)
+        line_res = send_line_push_messages(user_id, [flex_message])
+    else:
+        quick_reply_items = build_notify_quick_replies(record_id, status)
+        line_res = send_line_push(
+            user_id,
+            message,
+            quick_reply_items if quick_reply_items else None
+        )
 
-    send_line_push(
-        user_id,
-        message,
-        quick_reply_items if quick_reply_items else None
-    )
+    if not line_res.ok:
+        return line_res.text, 500
 
     update_notify_history(record_id, message)
 
@@ -908,7 +1123,6 @@ def handle_location_message(user_id, reply_token, message):
     henkyakubasho = getvalue(target_record, "henkyakubasho", "")
     sameaddress = getvalue(target_record, "sameaddress", "")
 
-    # 1回目：集荷場所として登録
     if not shukabasho:
         res = update_location_pickup(record_id, location_text, latitude, longitude)
 
@@ -931,10 +1145,7 @@ def handle_location_message(user_id, reply_token, message):
                     [quick_reply_location("📍 返却場所を送る")]
                 )
             else:
-                send_line_reply(
-                    reply_token,
-                    "集荷場所を登録しました。"
-                )
+                send_line_reply(reply_token, "集荷場所を登録しました。")
         else:
             send_line_reply(
                 reply_token,
@@ -942,7 +1153,6 @@ def handle_location_message(user_id, reply_token, message):
             )
         return
 
-    # 2回目：返却場所として登録
     if henkyakuhouhou == "LINEで位置情報を送る" and not henkyakubasho:
         res = update_location_return(record_id, location_text, latitude, longitude)
 
@@ -958,7 +1168,6 @@ def handle_location_message(user_id, reply_token, message):
             )
         return
 
-    # すでに登録済みの場合
     if henkyakuhouhou == "LINEで位置情報を送る" and henkyakubasho:
         send_line_reply(
             reply_token,
@@ -976,10 +1185,7 @@ def handle_location_message(user_id, reply_token, message):
     res = update_location_pickup(record_id, location_text, latitude, longitude)
 
     if res.ok:
-        send_line_reply(
-            reply_token,
-            "位置情報を登録しました。"
-        )
+        send_line_reply(reply_token, "位置情報を登録しました。")
     else:
         send_line_reply(
             reply_token,
