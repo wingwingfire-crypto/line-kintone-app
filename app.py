@@ -410,6 +410,28 @@ def update_cancel_action(record_id, action):
 
 
 # =========================
+# 誤操作防止ヘルパー
+# =========================
+
+def already_decided_text(current_answer, current_cancel_action):
+    if current_cancel_action:
+        return f"この修理受付は、すでに「{current_cancel_action}」で登録済みです。\n変更が必要な場合は店舗までご連絡ください。"
+
+    if current_answer == "修理する":
+        return "この修理受付は、すでに「修理する」で受付済みです。\n変更が必要な場合は店舗までご連絡ください。"
+
+    if current_answer == "キャンセル":
+        return "この修理受付は、すでに「キャンセル」で受付済みです。\n変更が必要な場合は店舗までご連絡ください。"
+
+    return "この修理受付は、すでに対応済みです。\n変更が必要な場合は店舗までご連絡ください。"
+
+
+def is_cancel_action_decided(record):
+    current_cancel_action = getvalue(record, "canceltaio", "")
+    return current_cancel_action in ["店舗引取", "返送", "処分"]
+
+
+# =========================
 # LINE通知テキスト
 # =========================
 
@@ -1261,23 +1283,6 @@ def build_shipping_flex_message(record):
                         "margin": "md"
                     }
                 ]
-            },
-            "footer": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "sm",
-                "contents": [
-                    {
-                        "type": "button",
-                        "style": "secondary",
-                        "height": "sm",
-                        "action": {
-                            "type": "message",
-                            "label": "配送状況を確認したい",
-                            "text": "配送状況を確認したい"
-                        }
-                    }
-                ]
             }
         }
     }
@@ -1828,18 +1833,50 @@ def handle_postback(user_id, reply_token, data):
         send_line_reply(reply_token, "操作内容を確認できませんでした。")
         return
 
+    record_before = get_kintone_record(record_id)
+
+    if not record_before:
+        send_line_reply(reply_token, "対象の修理受付が見つかりませんでした。")
+        return
+
+    current_answer = getvalue(record_before, "shurikahikaito", "")
+    current_cancel_action = getvalue(record_before, "canceltaio", "")
+    current_status = getvalue(record_before, "ドロップダウン", "")
+
     if action == "checkstatus":
-        record = get_kintone_record(record_id)
-
-        if not record:
-            send_line_reply(reply_token, "対象の修理受付が見つかりませんでした。")
-            return
-
-        text = build_status_text(record)
+        text = build_status_text(record_before)
         send_line_reply(reply_token, text)
         return
 
     if action == "repair":
+        if current_cancel_action:
+            send_line_reply(
+                reply_token,
+                already_decided_text(current_answer, current_cancel_action)
+            )
+            return
+
+        if current_answer == "キャンセル":
+            send_line_reply(
+                reply_token,
+                "この修理受付は、すでに「キャンセル」で受付済みです。\n変更が必要な場合は店舗までご連絡ください。"
+            )
+            return
+
+        if current_answer == "修理する":
+            send_line_reply(
+                reply_token,
+                "この修理受付は、すでに「修理する」で受付済みです。\n変更が必要な場合は店舗までご連絡ください。"
+            )
+            return
+
+        if current_status in ["🔴中止(返却)", "❌中止(処分)"]:
+            send_line_reply(
+                reply_token,
+                "この修理受付は、すでに中止対応済みです。\n変更が必要な場合は店舗までご連絡ください。"
+            )
+            return
+
         res = update_repair_answer(record_id, "修理する")
 
         if not res.ok:
@@ -1849,16 +1886,16 @@ def handle_postback(user_id, reply_token, data):
             )
             return
 
-        record = get_kintone_record(record_id)
+        record_after = get_kintone_record(record_id)
 
-        if not record:
+        if not record_after:
             send_line_reply(
                 reply_token,
                 "修理進行は受け付けましたが、対象レコードの取得に失敗しました。"
             )
             return
 
-        repair_accept_card = build_repair_accept_flex_message(record)
+        repair_accept_card = build_repair_accept_flex_message(record_after)
 
         send_line_reply_messages(
             reply_token,
@@ -1867,6 +1904,35 @@ def handle_postback(user_id, reply_token, data):
         return
 
     if action == "cancel":
+        if current_cancel_action:
+            send_line_reply(
+                reply_token,
+                already_decided_text(current_answer, current_cancel_action)
+            )
+            return
+
+        if current_answer == "修理する":
+            send_line_reply(
+                reply_token,
+                "この修理受付は、すでに「修理する」で受付済みです。\n変更が必要な場合は店舗までご連絡ください。"
+            )
+            return
+
+        if current_answer == "キャンセル":
+            cancel_card = build_cancel_action_flex_message(record_before)
+            send_line_reply_messages(
+                reply_token,
+                [cancel_card]
+            )
+            return
+
+        if current_status in ["📦受注(部品待ち)", "✉️修理完了連絡済", "🟢完了(精算済)"]:
+            send_line_reply(
+                reply_token,
+                "この修理受付は、すでに修理進行中または完了済みです。\n変更が必要な場合は店舗までご連絡ください。"
+            )
+            return
+
         res = update_repair_answer(record_id, "キャンセル")
 
         if not res.ok:
@@ -1876,16 +1942,16 @@ def handle_postback(user_id, reply_token, data):
             )
             return
 
-        record = get_kintone_record(record_id)
+        record_after = get_kintone_record(record_id)
 
-        if not record:
+        if not record_after:
             send_line_reply(
                 reply_token,
                 "キャンセルは受け付けましたが、対象レコードの取得に失敗しました。"
             )
             return
 
-        cancel_card = build_cancel_action_flex_message(record)
+        cancel_card = build_cancel_action_flex_message(record_after)
 
         send_line_reply_messages(
             reply_token,
@@ -1893,60 +1959,50 @@ def handle_postback(user_id, reply_token, data):
         )
         return
 
-    if action == "cancel_store":
-        res = update_cancel_action(record_id, "店舗引取")
-
-        if not res.ok:
-            send_line_reply(reply_token, "登録に失敗しました。")
-            return
-
-        record = get_kintone_record(record_id)
-
-        if record:
-            card = build_cancel_store_action_done_flex_message(record, "店舗引取")
-            send_line_reply_messages(reply_token, [card])
-        else:
+    if action in ["cancel_store", "cancel_return", "cancel_dispose"]:
+        if current_answer == "修理する":
             send_line_reply(
                 reply_token,
-                "店舗引取で承りました。\n店頭でのお渡し準備を進めます。"
+                "この修理受付は、すでに「修理する」で受付済みです。\n変更が必要な場合は店舗までご連絡ください。"
             )
-        return
-
-    if action == "cancel_return":
-        res = update_cancel_action(record_id, "返送")
-
-        if not res.ok:
-            send_line_reply(reply_token, "登録に失敗しました。")
             return
 
-        record = get_kintone_record(record_id)
-
-        if record:
-            card = build_cancel_store_action_done_flex_message(record, "返送")
-            send_line_reply_messages(reply_token, [card])
-        else:
+        if current_cancel_action:
             send_line_reply(
                 reply_token,
-                "返送で承りました。\n返送手配を進めます。"
+                f"この修理受付は、すでに「{current_cancel_action}」で登録済みです。\n変更が必要な場合は店舗までご連絡ください。"
             )
-        return
+            return
 
-    if action == "cancel_dispose":
-        res = update_cancel_action(record_id, "処分")
+        if current_answer != "キャンセル":
+            send_line_reply(
+                reply_token,
+                "先に「キャンセルする」を選択してください。\n変更が必要な場合は店舗までご連絡ください。"
+            )
+            return
+
+        if action == "cancel_store":
+            selected_action = "店舗引取"
+        elif action == "cancel_return":
+            selected_action = "返送"
+        else:
+            selected_action = "処分"
+
+        res = update_cancel_action(record_id, selected_action)
 
         if not res.ok:
             send_line_reply(reply_token, "登録に失敗しました。")
             return
 
-        record = get_kintone_record(record_id)
+        record_after = get_kintone_record(record_id)
 
-        if record:
-            card = build_cancel_store_action_done_flex_message(record, "処分")
+        if record_after:
+            card = build_cancel_store_action_done_flex_message(record_after, selected_action)
             send_line_reply_messages(reply_token, [card])
         else:
             send_line_reply(
                 reply_token,
-                "処分で承りました。\n当店にて適切に処分いたします。"
+                f"{selected_action}で承りました。"
             )
         return
 
