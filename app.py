@@ -10,10 +10,6 @@ from flask import Flask, request, render_template
 app = Flask(__name__)
 
 
-# =========================
-# CORS設定
-# =========================
-
 @app.after_request
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "https://9oh3c.cybozu.com"
@@ -21,10 +17,6 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
-
-# =========================
-# 基本設定
-# =========================
 
 LINE_CHANNEL_ACCESS_TOKEN = (
     os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
@@ -46,6 +38,23 @@ KINTONE_RECORDS_URL = f"{KINTONE_BASE}/k/v1/records.json"
 
 LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
+
+STATUS_RECEIVED = "⚪修理受付中"
+STATUS_PICKUP_REQUESTED = "🚚集荷依頼済"
+STATUS_ESTIMATE = "📄見積提出済"
+STATUS_ORDERED = "📦受注"
+STATUS_DONE_STORE = "✉️修理完了連絡済(店頭受取)"
+STATUS_DONE_SHIP = "✉️修理完了連絡済(発送)"
+STATUS_COMPLETE = "🟢完了・出荷済"
+STATUS_CANCEL_STORE = "🔴中止(店舗引取)"
+STATUS_CANCEL_RETURN = "🔴中止(返送)"
+STATUS_CANCEL_DISPOSE = "❌中止(店舗処分)"
+
+OLD_STATUS_ORDERED = "📦受注(部品待ち)"
+OLD_STATUS_DONE = "✉️修理完了連絡済"
+OLD_STATUS_COMPLETE = "🟢完了(精算済)"
+OLD_STATUS_CANCEL_RETURN = "🔴中止(返却)"
+OLD_STATUS_CANCEL_DISPOSE = "❌中止(処分)"
 
 
 # =========================
@@ -130,6 +139,28 @@ def make_repair_item_text(record):
         return "修理品情報 未入力"
 
     return " / ".join(parts)
+
+
+def is_ordered_status(status):
+    return status in [STATUS_ORDERED, OLD_STATUS_ORDERED] or "受注" in status
+
+
+def is_done_status(status):
+    return status in [STATUS_DONE_STORE, STATUS_DONE_SHIP, OLD_STATUS_DONE] or "修理完了連絡済" in status
+
+
+def is_complete_status(status):
+    return status in [STATUS_COMPLETE, OLD_STATUS_COMPLETE] or "完了" in status
+
+
+def is_cancel_status(status):
+    return status in [
+        STATUS_CANCEL_STORE,
+        STATUS_CANCEL_RETURN,
+        STATUS_CANCEL_DISPOSE,
+        OLD_STATUS_CANCEL_RETURN,
+        OLD_STATUS_CANCEL_DISPOSE
+    ] or "中止" in status
 
 
 # =========================
@@ -387,7 +418,7 @@ def update_repair_answer(record_id, answer):
     }
 
     if answer == "修理する":
-        fields["ドロップダウン"] = make_field("📦受注(部品待ち)")
+        fields["ドロップダウン"] = make_field(STATUS_ORDERED)
 
     return update_kintone_record(record_id, fields)
 
@@ -398,13 +429,13 @@ def update_cancel_action(record_id, action):
     }
 
     if action == "店舗引取":
-        fields["ドロップダウン"] = make_field("🔴中止(返却)")
+        fields["ドロップダウン"] = make_field(STATUS_CANCEL_STORE)
 
     if action == "返送":
-        fields["ドロップダウン"] = make_field("🔴中止(返却)")
+        fields["ドロップダウン"] = make_field(STATUS_CANCEL_RETURN)
 
     if action == "処分":
-        fields["ドロップダウン"] = make_field("❌中止(処分)")
+        fields["ドロップダウン"] = make_field(STATUS_CANCEL_DISPOSE)
 
     return update_kintone_record(record_id, fields)
 
@@ -424,11 +455,6 @@ def already_decided_text(current_answer, current_cancel_action):
         return "この修理受付は、すでに「キャンセル」で受付済みです。\n変更が必要な場合は店舗までご連絡ください。"
 
     return "この修理受付は、すでに対応済みです。\n変更が必要な場合は店舗までご連絡ください。"
-
-
-def is_cancel_action_decided(record):
-    current_cancel_action = getvalue(record, "canceltaio", "")
-    return current_cancel_action in ["店舗引取", "返送", "処分"]
 
 
 # =========================
@@ -537,7 +563,7 @@ def build_notify_message(record):
     estimate_detail = getvalue(record, "mitsumorinaiyo", "")
     tracking = getvalue(record, "okurijobango", "")
 
-    if status == "⚪修理受付中":
+    if status == STATUS_RECEIVED:
         return f"""修理のお申込みを受け付けました
 
 受付番号：{record_id}
@@ -549,14 +575,14 @@ def build_notify_message(record):
 
 確認・準備が整い次第、次のご案内をお送りいたしますので少々お待ちください。"""
 
-    if status == "🚚集荷依頼済":
+    if status == STATUS_PICKUP_REQUESTED:
         return f"""修理品の集荷手配が完了しました
 
 受付番号：{record_id}
 
 指定の日時に配送業者が伺いますので、修理品のご準備をお願いいたします。"""
 
-    if status == "📄見積提出済" or "見積" in status:
+    if status == STATUS_ESTIMATE or "見積" in status:
         return f"""修理のお見積りが届きました
 
 受付番号：{record_id}
@@ -580,7 +606,7 @@ def build_notify_message(record):
 
 ◎修理を進めるか、キャンセルされるかをご回答ください。"""
 
-    if status == "📦受注(部品待ち)" or "受注" in status:
+    if status == STATUS_ORDERED or "受注" in status:
         return f"""修理作業を開始いたします
 
 受付番号：{record_id}
@@ -595,7 +621,7 @@ def build_notify_message(record):
 上中野店 TEL：086-230-6551
 受付時間：7:00〜19:00"""
 
-    if "修理完了連絡済" in status and tracking:
+    if status == STATUS_DONE_SHIP:
         return f"""修理品を発送しました
 
 受付番号：{record_id}
@@ -604,12 +630,12 @@ def build_notify_message(record):
 修理作業が完了し、修理品を発送いたしました。
 
 ■ お問い合わせ送り状番号
-{tracking}
+{tracking or "未入力"}
 
 到着までもうしばらくお待ちください。
 この度は修理サービスをご利用いただき、誠にありがとうございました。"""
 
-    if "修理完了連絡済" in status:
+    if status == STATUS_DONE_STORE:
         return f"""修理が完了いたしました
 
 受付番号：{record_id}
@@ -619,23 +645,31 @@ def build_notify_message(record):
 
 ご来店時に、このLINE画面または受付番号をスタッフへお見せください。"""
 
-    if "完了" in status:
+    if status == STATUS_COMPLETE:
         return f"""修理対応が完了しました
 
 受付番号：{record_id}
 
 この度は修理サービスをご利用いただき、誠にありがとうございました。"""
 
-    if status == "🔴中止(返却)":
-        return f"""修理キャンセル後の返却対応について
+    if status == STATUS_CANCEL_STORE:
+        return f"""修理キャンセル後の店舗引取について
 
 受付番号：{record_id}
 
 修理中止のご連絡を承りました。
-お預かりした修理品は返却対応として進めます。"""
+お預かりした修理品は店舗引取として進めます。"""
 
-    if status == "❌中止(処分)":
-        return f"""修理キャンセル後の処分対応について
+    if status == STATUS_CANCEL_RETURN:
+        return f"""修理キャンセル後の返送対応について
+
+受付番号：{record_id}
+
+修理中止のご連絡を承りました。
+お預かりした修理品は返送対応として進めます。"""
+
+    if status == STATUS_CANCEL_DISPOSE:
+        return f"""修理キャンセル後の店舗処分について
 
 受付番号：{record_id}
 
@@ -649,264 +683,169 @@ def build_notify_message(record):
 # Flex Messageカード作成
 # =========================
 
-def build_receipt_flex_message(record_id, name):
+def text_component(text, size="sm", weight=None, color=None, wrap=True, margin=None):
+    item = {
+        "type": "text",
+        "text": text,
+        "size": size,
+        "wrap": wrap
+    }
+
+    if weight:
+        item["weight"] = weight
+
+    if color:
+        item["color"] = color
+
+    if margin:
+        item["margin"] = margin
+
+    return item
+
+
+def separator(margin="md"):
     return {
+        "type": "separator",
+        "margin": margin
+    }
+
+
+def info_box(title, value, color, bg):
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": bg,
+        "cornerRadius": "12px",
+        "paddingAll": "14px",
+        "margin": "md",
+        "contents": [
+            text_component(title, size="sm", weight="bold", color=color),
+            text_component(value, size="lg", weight="bold", margin="sm")
+        ]
+    }
+
+
+def make_flex_card(title, record_id, header_color, sub_color, body_contents, footer_contents=None, alt_text=None, quick_reply_items=None):
+    message = {
         "type": "flex",
-        "altText": "修理受付を受け付けました",
+        "altText": alt_text or title,
         "contents": {
             "type": "bubble",
             "size": "mega",
             "header": {
                 "type": "box",
                 "layout": "vertical",
-                "backgroundColor": "#06C755",
+                "backgroundColor": header_color,
                 "paddingAll": "16px",
                 "contents": [
-                    {
-                        "type": "text",
-                        "text": "✅ 修理受付を受け付けました",
-                        "weight": "bold",
-                        "size": "lg",
-                        "color": "#FFFFFF",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": f"受付番号：{record_id}",
-                        "size": "sm",
-                        "color": "#E8F5E9",
-                        "margin": "sm"
-                    }
+                    text_component(title, size="lg", weight="bold", color="#FFFFFF"),
+                    text_component(f"受付番号：{record_id}", size="sm", color=sub_color, margin="sm")
                 ]
             },
             "body": {
                 "type": "box",
                 "layout": "vertical",
                 "spacing": "md",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"{name or 'お客様'} 様",
-                        "weight": "bold",
-                        "size": "md",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": "修理のお申し込みありがとうございます。内容を確認し、準備が整い次第ご案内いたします。",
-                        "size": "sm",
-                        "color": "#555555",
-                        "wrap": True
-                    },
-                    {
-                        "type": "separator",
-                        "margin": "md"
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#F3FFF7",
-                        "cornerRadius": "12px",
-                        "paddingAll": "14px",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "現在の状態",
-                                "size": "sm",
-                                "weight": "bold",
-                                "color": "#06C755"
-                            },
-                            {
-                                "type": "text",
-                                "text": "⚪修理受付中",
-                                "size": "lg",
-                                "weight": "bold",
-                                "margin": "sm",
-                                "wrap": True
-                            }
-                        ]
-                    }
-                ]
+                "contents": body_contents
             }
         }
     }
+
+    if footer_contents:
+        message["contents"]["footer"] = {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "sm",
+            "contents": footer_contents
+        }
+
+    if quick_reply_items:
+        message["quickReply"] = {
+            "items": quick_reply_items
+        }
+
+    return message
+
+
+def build_receipt_flex_message(record_id, name):
+    body = [
+        text_component(f"{name or 'お客様'} 様", size="md", weight="bold"),
+        text_component("修理のお申し込みありがとうございます。内容を確認し、準備が整い次第ご案内いたします。", color="#555555"),
+        separator(),
+        info_box("現在の状態", STATUS_RECEIVED, "#06C755", "#F3FFF7")
+    ]
+
+    return make_flex_card(
+        "✅ 修理受付を完了しました",
+        record_id,
+        "#06C755",
+        "#E8F5E9",
+        body,
+        alt_text="修理受付を完了しました"
+    )
 
 
 def build_pickup_location_request_flex_message(record_id, name):
-    return {
-        "type": "flex",
-        "altText": "集荷場所を送信してください",
-        "quickReply": {
-            "items": [
-                quick_reply_location("📍 集荷場所を送る")
+    body = [
+        text_component(f"{name or 'お客様'} 様", size="md", weight="bold"),
+        text_component("集荷場所の位置情報が必要です。", color="#555555"),
+        separator(),
+        {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#F2F8FF",
+            "cornerRadius": "12px",
+            "paddingAll": "14px",
+            "contents": [
+                text_component("次にやること", size="sm", weight="bold", color="#1976D2"),
+                text_component("下の「📍 集荷場所を送る」ボタンを押してください。", margin="sm"),
+                text_component("位置情報画面が開いたら、場所を選んで緑の✅を押してください。", margin="sm")
             ]
-        },
-        "contents": {
-            "type": "bubble",
-            "size": "mega",
-            "header": {
-                "type": "box",
-                "layout": "vertical",
-                "backgroundColor": "#1976D2",
-                "paddingAll": "16px",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": "📍 集荷場所を登録してください",
-                        "weight": "bold",
-                        "size": "lg",
-                        "color": "#FFFFFF",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": f"受付番号：{record_id}",
-                        "size": "sm",
-                        "color": "#E3F2FD",
-                        "margin": "sm"
-                    }
-                ]
-            },
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "md",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"{name or 'お客様'} 様",
-                        "weight": "bold",
-                        "size": "md",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": "配送業者が集荷へ伺うため、集荷場所の位置情報を送信してください。",
-                        "size": "sm",
-                        "color": "#555555",
-                        "wrap": True
-                    },
-                    {
-                        "type": "separator",
-                        "margin": "md"
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#F2F8FF",
-                        "cornerRadius": "12px",
-                        "paddingAll": "14px",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "操作方法",
-                                "size": "sm",
-                                "weight": "bold",
-                                "color": "#1976D2"
-                            },
-                            {
-                                "type": "text",
-                                "text": "下の「📍 集荷場所を送る」ボタンを押し、位置情報画面で集荷場所を選んで、緑の✅を押してください。",
-                                "size": "sm",
-                                "wrap": True,
-                                "margin": "sm"
-                            }
-                        ]
-                    }
-                ]
-            }
         }
-    }
+    ]
+
+    return make_flex_card(
+        "📍 集荷場所を登録してください",
+        record_id,
+        "#1976D2",
+        "#E3F2FD",
+        body,
+        alt_text="集荷場所を送信してください",
+        quick_reply_items=[quick_reply_location("📍 集荷場所を送る")]
+    )
 
 
 def build_return_location_request_flex_message(record):
     record_id = getvalue(record, "$id", "")
     name = getvalue(record, "customer_name", "")
 
-    return {
-        "type": "flex",
-        "altText": "返却場所を送信してください",
-        "quickReply": {
-            "items": [
-                quick_reply_location("📍 返却場所を送る")
+    body = [
+        text_component(f"{name or 'お客様'} 様", size="md", weight="bold"),
+        text_component("集荷場所を登録しました。続いて返却場所の位置情報を送ってください。", color="#555555"),
+        separator(),
+        {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FAF2FF",
+            "cornerRadius": "12px",
+            "paddingAll": "14px",
+            "contents": [
+                text_component("次にやること", size="sm", weight="bold", color="#6A1B9A"),
+                text_component("下の「📍 返却場所を送る」ボタンを押してください。", margin="sm"),
+                text_component("位置情報画面が開いたら、場所を選んで緑の✅を押してください。", margin="sm")
             ]
-        },
-        "contents": {
-            "type": "bubble",
-            "size": "mega",
-            "header": {
-                "type": "box",
-                "layout": "vertical",
-                "backgroundColor": "#6A1B9A",
-                "paddingAll": "16px",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": "📦 返却場所を登録してください",
-                        "weight": "bold",
-                        "size": "lg",
-                        "color": "#FFFFFF",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": f"受付番号：{record_id}",
-                        "size": "sm",
-                        "color": "#F3E5F5",
-                        "margin": "sm"
-                    }
-                ]
-            },
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "md",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"{name or 'お客様'} 様",
-                        "weight": "bold",
-                        "size": "md",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": "集荷場所を登録しました。続いて、修理完了後の返却場所を送信してください。",
-                        "size": "sm",
-                        "color": "#555555",
-                        "wrap": True
-                    },
-                    {
-                        "type": "separator",
-                        "margin": "md"
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#FAF2FF",
-                        "cornerRadius": "12px",
-                        "paddingAll": "14px",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "操作方法",
-                                "size": "sm",
-                                "weight": "bold",
-                                "color": "#6A1B9A"
-                            },
-                            {
-                                "type": "text",
-                                "text": "下の「📍 返却場所を送る」ボタンを押し、位置情報画面で返却場所を選んで、緑の✅を押してください。",
-                                "size": "sm",
-                                "wrap": True,
-                                "margin": "sm"
-                            }
-                        ]
-                    }
-                ]
-            }
         }
-    }
+    ]
+
+    return make_flex_card(
+        "📦 返却場所を登録してください",
+        record_id,
+        "#6A1B9A",
+        "#F3E5F5",
+        body,
+        alt_text="返却場所を送信してください",
+        quick_reply_items=[quick_reply_location("📍 返却場所を送る")]
+    )
 
 
 def build_estimate_flex_message(record):
@@ -919,172 +858,67 @@ def build_estimate_flex_message(record):
     estimate = getvalue(record, "mitsumorikingaku", "")
     estimate_detail = shorten_text(getvalue(record, "mitsumorinaiyo", ""), 80)
 
-    return {
-        "type": "flex",
-        "altText": "修理のお見積りが届きました",
-        "contents": {
-            "type": "bubble",
-            "size": "mega",
-            "header": {
-                "type": "box",
-                "layout": "vertical",
-                "backgroundColor": "#06C755",
-                "paddingAll": "16px",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": "📄 修理見積が届きました",
-                        "weight": "bold",
-                        "size": "lg",
-                        "color": "#FFFFFF",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": f"受付番号：{record_id}",
-                        "size": "sm",
-                        "color": "#E8F5E9",
-                        "margin": "sm"
-                    }
-                ]
-            },
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "md",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"{name or 'お客様'} 様",
-                        "weight": "bold",
-                        "size": "md",
-                        "color": "#222222",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": "修理品のお見積りが完了しました。",
-                        "size": "sm",
-                        "color": "#666666",
-                        "wrap": True
-                    },
-                    {
-                        "type": "separator",
-                        "margin": "md"
-                    },
-                    {
-                        "type": "text",
-                        "text": "修理品情報",
-                        "size": "sm",
-                        "weight": "bold",
-                        "color": "#06C755"
-                    },
-                    {
-                        "type": "text",
-                        "text": f"メーカー：{maker or '未入力'}",
-                        "size": "sm",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": f"型番：{model or '未入力'}",
-                        "size": "sm",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": f"機番：{serial or '未入力'}",
-                        "size": "sm",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": "故障内容",
-                        "size": "sm",
-                        "weight": "bold",
-                        "color": "#06C755",
-                        "margin": "md"
-                    },
-                    {
-                        "type": "text",
-                        "text": issue,
-                        "size": "sm",
-                        "wrap": True
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#F3FFF7",
-                        "cornerRadius": "12px",
-                        "paddingAll": "14px",
-                        "margin": "md",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "お見積り金額",
-                                "size": "sm",
-                                "weight": "bold",
-                                "color": "#06C755"
-                            },
-                            {
-                                "type": "text",
-                                "text": format_yen(estimate),
-                                "size": "xxl",
-                                "weight": "bold",
-                                "color": "#111111",
-                                "margin": "sm",
-                                "wrap": True
-                            }
-                        ]
-                    },
-                    {
-                        "type": "text",
-                        "text": "お見積り内容",
-                        "size": "sm",
-                        "weight": "bold",
-                        "color": "#06C755",
-                        "margin": "md"
-                    },
-                    {
-                        "type": "text",
-                        "text": estimate_detail,
-                        "size": "sm",
-                        "wrap": True
-                    }
-                ]
-            },
-            "footer": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "sm",
-                "contents": [
-                    {
-                        "type": "button",
-                        "style": "primary",
-                        "height": "sm",
-                        "color": "#06C755",
-                        "action": {
-                            "type": "postback",
-                            "label": "修理する",
-                            "data": f"action=repair&recordid={record_id}",
-                            "displayText": "修理する"
-                        }
-                    },
-                    {
-                        "type": "button",
-                        "style": "secondary",
-                        "height": "sm",
-                        "action": {
-                            "type": "postback",
-                            "label": "キャンセルする",
-                            "data": f"action=cancel&recordid={record_id}",
-                            "displayText": "キャンセルする"
-                        }
-                    }
-                ]
+    body = [
+        text_component(f"{name or 'お客様'} 様", size="md", weight="bold", color="#222222"),
+        text_component("修理品のお見積りが完了しました。", color="#666666"),
+        separator(),
+        text_component("修理品情報", weight="bold", color="#06C755"),
+        text_component(f"メーカー：{maker or '未入力'}"),
+        text_component(f"型番：{model or '未入力'}"),
+        text_component(f"機番：{serial or '未入力'}"),
+        text_component("故障内容", weight="bold", color="#06C755", margin="md"),
+        text_component(issue),
+        {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#F3FFF7",
+            "cornerRadius": "12px",
+            "paddingAll": "14px",
+            "margin": "md",
+            "contents": [
+                text_component("お見積り金額", weight="bold", color="#06C755"),
+                text_component(format_yen(estimate), size="xxl", weight="bold", color="#111111", margin="sm")
+            ]
+        },
+        text_component("お見積り内容", weight="bold", color="#06C755", margin="md"),
+        text_component(estimate_detail)
+    ]
+
+    footer = [
+        {
+            "type": "button",
+            "style": "primary",
+            "height": "sm",
+            "color": "#06C755",
+            "action": {
+                "type": "postback",
+                "label": "修理する",
+                "data": f"action=repair&recordid={record_id}",
+                "displayText": "修理する"
+            }
+        },
+        {
+            "type": "button",
+            "style": "secondary",
+            "height": "sm",
+            "action": {
+                "type": "postback",
+                "label": "キャンセルする",
+                "data": f"action=cancel&recordid={record_id}",
+                "displayText": "キャンセルする"
             }
         }
-    }
+    ]
+
+    return make_flex_card(
+        "📄 修理見積が届きました",
+        record_id,
+        "#06C755",
+        "#E8F5E9",
+        body,
+        footer,
+        alt_text="修理のお見積りが届きました"
+    )
 
 
 def build_repair_accept_flex_message(record):
@@ -1092,108 +926,24 @@ def build_repair_accept_flex_message(record):
     name = getvalue(record, "customer_name", "")
     repair_item = make_repair_item_text(record)
 
-    return {
-        "type": "flex",
-        "altText": "修理進行を受け付けました",
-        "contents": {
-            "type": "bubble",
-            "size": "mega",
-            "header": {
-                "type": "box",
-                "layout": "vertical",
-                "backgroundColor": "#06C755",
-                "paddingAll": "16px",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": "✅ 修理進行を受け付けました",
-                        "weight": "bold",
-                        "size": "lg",
-                        "color": "#FFFFFF",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": f"受付番号：{record_id}",
-                        "size": "sm",
-                        "color": "#E8F5E9",
-                        "margin": "sm"
-                    }
-                ]
-            },
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "md",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"{name or 'お客様'} 様",
-                        "weight": "bold",
-                        "size": "md",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": "修理進行のご回答ありがとうございます。これより修理作業を進めます。",
-                        "size": "sm",
-                        "color": "#555555",
-                        "wrap": True
-                    },
-                    {
-                        "type": "separator",
-                        "margin": "md"
-                    },
-                    {
-                        "type": "text",
-                        "text": "対象修理品",
-                        "size": "sm",
-                        "weight": "bold",
-                        "color": "#06C755"
-                    },
-                    {
-                        "type": "text",
-                        "text": repair_item,
-                        "size": "sm",
-                        "wrap": True
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#F3FFF7",
-                        "cornerRadius": "12px",
-                        "paddingAll": "14px",
-                        "margin": "md",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "現在の状態",
-                                "size": "sm",
-                                "weight": "bold",
-                                "color": "#06C755"
-                            },
-                            {
-                                "type": "text",
-                                "text": "📦受注(部品待ち)",
-                                "size": "lg",
-                                "weight": "bold",
-                                "margin": "sm",
-                                "wrap": True
-                            }
-                        ]
-                    },
-                    {
-                        "type": "text",
-                        "text": "完了予定日が決まり次第、LINEでご案内いたします。",
-                        "size": "sm",
-                        "color": "#555555",
-                        "wrap": True,
-                        "margin": "md"
-                    }
-                ]
-            }
-        }
-    }
+    body = [
+        text_component(f"{name or 'お客様'} 様", size="md", weight="bold"),
+        text_component("修理進行のご回答ありがとうございます。これより修理作業を進めます。", color="#555555"),
+        separator(),
+        text_component("対象修理品", weight="bold", color="#06C755"),
+        text_component(repair_item),
+        info_box("現在の状態", STATUS_ORDERED, "#06C755", "#F3FFF7"),
+        text_component("完了予定日が決まり次第、LINEでご案内いたします。", color="#555555", margin="md")
+    ]
+
+    return make_flex_card(
+        "✅ 修理進行を受け付けました",
+        record_id,
+        "#06C755",
+        "#E8F5E9",
+        body,
+        alt_text="修理進行を受け付けました"
+    )
 
 
 def build_cancel_action_flex_message(record):
@@ -1201,141 +951,72 @@ def build_cancel_action_flex_message(record):
     name = getvalue(record, "customer_name", "")
     repair_item = make_repair_item_text(record)
 
-    return {
-        "type": "flex",
-        "altText": "キャンセル後の対応を選択してください",
-        "contents": {
-            "type": "bubble",
-            "size": "mega",
-            "header": {
-                "type": "box",
-                "layout": "vertical",
-                "backgroundColor": "#D32F2F",
-                "paddingAll": "16px",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": "❌ キャンセルを受け付けました",
-                        "weight": "bold",
-                        "size": "lg",
-                        "color": "#FFFFFF",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": f"受付番号：{record_id}",
-                        "size": "sm",
-                        "color": "#FFEBEE",
-                        "margin": "sm"
-                    }
-                ]
-            },
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "md",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"{name or 'お客様'} 様",
-                        "weight": "bold",
-                        "size": "md",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": "修理キャンセルのご回答を受け付けました。",
-                        "size": "sm",
-                        "color": "#555555",
-                        "wrap": True
-                    },
-                    {
-                        "type": "separator",
-                        "margin": "md"
-                    },
-                    {
-                        "type": "text",
-                        "text": "対象修理品",
-                        "size": "sm",
-                        "weight": "bold",
-                        "color": "#D32F2F"
-                    },
-                    {
-                        "type": "text",
-                        "text": repair_item,
-                        "size": "sm",
-                        "wrap": True
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#FFF5F5",
-                        "cornerRadius": "12px",
-                        "paddingAll": "14px",
-                        "margin": "md",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "今後の対応を選択してください",
-                                "size": "sm",
-                                "weight": "bold",
-                                "color": "#D32F2F",
-                                "wrap": True
-                            },
-                            {
-                                "type": "text",
-                                "text": "お預かりしている修理品について、店舗引取・返送・処分のいずれかを選択してください。",
-                                "size": "sm",
-                                "wrap": True,
-                                "margin": "sm"
-                            }
-                        ]
-                    }
-                ]
-            },
-            "footer": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "sm",
-                "contents": [
-                    {
-                        "type": "button",
-                        "style": "primary",
-                        "height": "sm",
-                        "color": "#1565C0",
-                        "action": {
-                            "type": "postback",
-                            "label": "店舗引取",
-                            "data": f"action=cancel_store&recordid={record_id}",
-                            "displayText": "店舗引取"
-                        }
-                    },
-                    {
-                        "type": "button",
-                        "style": "secondary",
-                        "height": "sm",
-                        "action": {
-                            "type": "postback",
-                            "label": "返送",
-                            "data": f"action=cancel_return&recordid={record_id}",
-                            "displayText": "返送"
-                        }
-                    },
-                    {
-                        "type": "button",
-                        "style": "secondary",
-                        "height": "sm",
-                        "action": {
-                            "type": "postback",
-                            "label": "処分",
-                            "data": f"action=cancel_dispose&recordid={record_id}",
-                            "displayText": "処分"
-                        }
-                    }
-                ]
+    body = [
+        text_component(f"{name or 'お客様'} 様", size="md", weight="bold"),
+        text_component("修理キャンセルのご回答を受け付けました。", color="#555555"),
+        separator(),
+        text_component("対象修理品", weight="bold", color="#D32F2F"),
+        text_component(repair_item),
+        {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFF5F5",
+            "cornerRadius": "12px",
+            "paddingAll": "14px",
+            "margin": "md",
+            "contents": [
+                text_component("今後の対応を選択してください", weight="bold", color="#D32F2F"),
+                text_component("お預かりしている修理品について、店舗引取・返送・処分のいずれかを選択してください。", margin="sm")
+            ]
+        }
+    ]
+
+    footer = [
+        {
+            "type": "button",
+            "style": "primary",
+            "height": "sm",
+            "color": "#1565C0",
+            "action": {
+                "type": "postback",
+                "label": "店舗引取",
+                "data": f"action=cancel_store&recordid={record_id}",
+                "displayText": "店舗引取"
+            }
+        },
+        {
+            "type": "button",
+            "style": "secondary",
+            "height": "sm",
+            "action": {
+                "type": "postback",
+                "label": "返送",
+                "data": f"action=cancel_return&recordid={record_id}",
+                "displayText": "返送"
+            }
+        },
+        {
+            "type": "button",
+            "style": "secondary",
+            "height": "sm",
+            "action": {
+                "type": "postback",
+                "label": "処分",
+                "data": f"action=cancel_dispose&recordid={record_id}",
+                "displayText": "処分"
             }
         }
-    }
+    ]
+
+    return make_flex_card(
+        "❌ キャンセルを受け付けました",
+        record_id,
+        "#D32F2F",
+        "#FFEBEE",
+        body,
+        footer,
+        alt_text="キャンセル後の対応を選択してください"
+    )
 
 
 def build_store_pickup_flex_message(record):
@@ -1343,99 +1024,34 @@ def build_store_pickup_flex_message(record):
     name = getvalue(record, "customer_name", "")
     repair_item = make_repair_item_text(record)
 
-    return {
-        "type": "flex",
-        "altText": "修理が完了しました",
-        "contents": {
-            "type": "bubble",
-            "size": "mega",
-            "header": {
-                "type": "box",
-                "layout": "vertical",
-                "backgroundColor": "#1976D2",
-                "paddingAll": "16px",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": "✅ 修理が完了しました",
-                        "weight": "bold",
-                        "size": "lg",
-                        "color": "#FFFFFF",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": f"受付番号：{record_id}",
-                        "size": "sm",
-                        "color": "#E3F2FD",
-                        "margin": "sm"
-                    }
-                ]
-            },
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "md",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"{name or 'お客様'} 様",
-                        "weight": "bold",
-                        "size": "md",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": "大変お待たせいたしました。修理品のお渡し準備が整いました。",
-                        "size": "sm",
-                        "color": "#555555",
-                        "wrap": True
-                    },
-                    {
-                        "type": "separator",
-                        "margin": "md"
-                    },
-                    {
-                        "type": "text",
-                        "text": "対象修理品",
-                        "size": "sm",
-                        "weight": "bold",
-                        "color": "#1976D2"
-                    },
-                    {
-                        "type": "text",
-                        "text": repair_item,
-                        "size": "sm",
-                        "wrap": True
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#F2F8FF",
-                        "cornerRadius": "12px",
-                        "paddingAll": "14px",
-                        "margin": "md",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "ご来店時のお願い",
-                                "size": "sm",
-                                "weight": "bold",
-                                "color": "#1976D2"
-                            },
-                            {
-                                "type": "text",
-                                "text": "このLINE画面、または受付番号をスタッフへお見せください。",
-                                "size": "sm",
-                                "wrap": True,
-                                "margin": "sm"
-                            }
-                        ]
-                    }
-                ]
-            }
+    body = [
+        text_component(f"{name or 'お客様'} 様", size="md", weight="bold"),
+        text_component("大変お待たせいたしました。修理品のお渡し準備が整いました。", color="#555555"),
+        separator(),
+        text_component("対象修理品", weight="bold", color="#1976D2"),
+        text_component(repair_item),
+        {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#F2F8FF",
+            "cornerRadius": "12px",
+            "paddingAll": "14px",
+            "margin": "md",
+            "contents": [
+                text_component("ご来店時のお願い", weight="bold", color="#1976D2"),
+                text_component("このLINE画面、または受付番号をスタッフへお見せください。", margin="sm")
+            ]
         }
-    }
+    ]
+
+    return make_flex_card(
+        "✅ 修理が完了しました",
+        record_id,
+        "#1976D2",
+        "#E3F2FD",
+        body,
+        alt_text="修理が完了しました"
+    )
 
 
 def build_shipping_flex_message(record):
@@ -1444,108 +1060,24 @@ def build_shipping_flex_message(record):
     tracking = getvalue(record, "okurijobango", "")
     repair_item = make_repair_item_text(record)
 
-    return {
-        "type": "flex",
-        "altText": "修理品を発送しました",
-        "contents": {
-            "type": "bubble",
-            "size": "mega",
-            "header": {
-                "type": "box",
-                "layout": "vertical",
-                "backgroundColor": "#6A1B9A",
-                "paddingAll": "16px",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": "🚚 修理品を発送しました",
-                        "weight": "bold",
-                        "size": "lg",
-                        "color": "#FFFFFF",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": f"受付番号：{record_id}",
-                        "size": "sm",
-                        "color": "#F3E5F5",
-                        "margin": "sm"
-                    }
-                ]
-            },
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "md",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"{name or 'お客様'} 様",
-                        "weight": "bold",
-                        "size": "md",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": "修理作業が完了し、修理品を発送いたしました。",
-                        "size": "sm",
-                        "color": "#555555",
-                        "wrap": True
-                    },
-                    {
-                        "type": "separator",
-                        "margin": "md"
-                    },
-                    {
-                        "type": "text",
-                        "text": "対象修理品",
-                        "size": "sm",
-                        "weight": "bold",
-                        "color": "#6A1B9A"
-                    },
-                    {
-                        "type": "text",
-                        "text": repair_item,
-                        "size": "sm",
-                        "wrap": True
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#FAF2FF",
-                        "cornerRadius": "12px",
-                        "paddingAll": "14px",
-                        "margin": "md",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "お問い合わせ送り状番号",
-                                "size": "sm",
-                                "weight": "bold",
-                                "color": "#6A1B9A"
-                            },
-                            {
-                                "type": "text",
-                                "text": tracking or "未入力",
-                                "size": "xl",
-                                "weight": "bold",
-                                "wrap": True,
-                                "margin": "sm"
-                            }
-                        ]
-                    },
-                    {
-                        "type": "text",
-                        "text": "到着までもうしばらくお待ちください。",
-                        "size": "sm",
-                        "color": "#555555",
-                        "wrap": True,
-                        "margin": "md"
-                    }
-                ]
-            }
-        }
-    }
+    body = [
+        text_component(f"{name or 'お客様'} 様", size="md", weight="bold"),
+        text_component("修理作業が完了し、修理品を発送いたしました。", color="#555555"),
+        separator(),
+        text_component("対象修理品", weight="bold", color="#6A1B9A"),
+        text_component(repair_item),
+        info_box("お問い合わせ送り状番号", tracking or "未入力", "#6A1B9A", "#FAF2FF"),
+        text_component("到着までもうしばらくお待ちください。", color="#555555", margin="md")
+    ]
+
+    return make_flex_card(
+        "🚚 修理品を発送しました",
+        record_id,
+        "#6A1B9A",
+        "#F3E5F5",
+        body,
+        alt_text="修理品を発送しました"
+    )
 
 
 def build_cancel_store_action_done_flex_message(record, action_label):
@@ -1554,124 +1086,47 @@ def build_cancel_store_action_done_flex_message(record, action_label):
     repair_item = make_repair_item_text(record)
 
     if action_label == "処分":
-        title = "❌ 処分で承りました"
+        title = "❌ 店舗処分で承りました"
         color = "#D32F2F"
         bg = "#FFF5F5"
         body_text = "お預かりしている修理品は、当店にて適切に処分いたします。"
-        status_text = "❌中止(処分)"
+        status_text = STATUS_CANCEL_DISPOSE
     elif action_label == "返送":
         title = "🚚 返送で承りました"
         color = "#6A1B9A"
         bg = "#FAF2FF"
         body_text = "お預かりしている修理品は、返送対応として進めます。"
-        status_text = "🔴中止(返却)"
+        status_text = STATUS_CANCEL_RETURN
     else:
         title = "🏬 店舗引取で承りました"
         color = "#1565C0"
         bg = "#F2F8FF"
         body_text = "お預かりしている修理品は、店舗引取としてお渡し準備を進めます。"
-        status_text = "🔴中止(返却)"
+        status_text = STATUS_CANCEL_STORE
 
-    return {
-        "type": "flex",
-        "altText": f"{action_label}で承りました",
-        "contents": {
-            "type": "bubble",
-            "size": "mega",
-            "header": {
-                "type": "box",
-                "layout": "vertical",
-                "backgroundColor": color,
-                "paddingAll": "16px",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": title,
-                        "weight": "bold",
-                        "size": "lg",
-                        "color": "#FFFFFF",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": f"受付番号：{record_id}",
-                        "size": "sm",
-                        "color": "#FFFFFF",
-                        "margin": "sm"
-                    }
-                ]
-            },
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "md",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"{name or 'お客様'} 様",
-                        "weight": "bold",
-                        "size": "md",
-                        "wrap": True
-                    },
-                    {
-                        "type": "text",
-                        "text": body_text,
-                        "size": "sm",
-                        "color": "#555555",
-                        "wrap": True
-                    },
-                    {
-                        "type": "separator",
-                        "margin": "md"
-                    },
-                    {
-                        "type": "text",
-                        "text": "対象修理品",
-                        "size": "sm",
-                        "weight": "bold",
-                        "color": color
-                    },
-                    {
-                        "type": "text",
-                        "text": repair_item,
-                        "size": "sm",
-                        "wrap": True
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": bg,
-                        "cornerRadius": "12px",
-                        "paddingAll": "14px",
-                        "margin": "md",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "現在の状態",
-                                "size": "sm",
-                                "weight": "bold",
-                                "color": color
-                            },
-                            {
-                                "type": "text",
-                                "text": status_text,
-                                "size": "lg",
-                                "weight": "bold",
-                                "margin": "sm",
-                                "wrap": True
-                            }
-                        ]
-                    }
-                ]
-            }
-        }
-    }
+    body = [
+        text_component(f"{name or 'お客様'} 様", size="md", weight="bold"),
+        text_component(body_text, color="#555555"),
+        separator(),
+        text_component("対象修理品", weight="bold", color=color),
+        text_component(repair_item),
+        info_box("現在の状態", status_text, color, bg)
+    ]
+
+    return make_flex_card(
+        title,
+        record_id,
+        color,
+        "#FFFFFF",
+        body,
+        alt_text=f"{action_label}で承りました"
+    )
 
 
 def build_notify_quick_replies(record_id, status):
     items = []
 
-    if status == "📄見積提出済" or "見積" in status:
+    if status == STATUS_ESTIMATE or "見積" in status:
         items.append(
             quick_reply_postback(
                 "修理する",
@@ -1762,7 +1217,7 @@ def submit():
         "kiyakuagree": make_field(kiyakuagree),
 
         "notifyurl": make_field(notify_url),
-        "ドロップダウン": make_field("⚪修理受付中")
+        "ドロップダウン": make_field(STATUS_RECEIVED)
     }
 
     res = add_kintone_record(record)
@@ -1777,21 +1232,9 @@ def submit():
 
     if uketorihouhou == "集荷依頼・LINEで位置情報を送る":
         pickup_card = build_pickup_location_request_flex_message(record_id, name)
-
-        send_line_push_messages(
-            lineuserid,
-            [
-                receipt_card,
-                pickup_card
-            ]
-        )
+        send_line_push_messages(lineuserid, [receipt_card, pickup_card])
     else:
-        send_line_push_messages(
-            lineuserid,
-            [
-                receipt_card
-            ]
-        )
+        send_line_push_messages(lineuserid, [receipt_card])
 
     return "OK", 200
 
@@ -1827,7 +1270,6 @@ def notify():
         return "LINEユーザーIDがありません", 400
 
     status = getvalue(record, "ドロップダウン", "")
-    tracking = getvalue(record, "okurijobango", "")
     message = build_notify_message(record)
     past_message = getvalue(record, "notifymessage", "")
 
@@ -1835,15 +1277,15 @@ def notify():
         print("重複通知スキップ:", status)
         return f"既に同じ内容を通知済み: {status}", 200
 
-    if status == "📄見積提出済" or "見積" in status:
+    if status == STATUS_ESTIMATE or "見積" in status:
         flex_message = build_estimate_flex_message(record)
         line_res = send_line_push_messages(user_id, [flex_message])
 
-    elif "修理完了連絡済" in status and tracking:
+    elif status == STATUS_DONE_SHIP:
         flex_message = build_shipping_flex_message(record)
         line_res = send_line_push_messages(user_id, [flex_message])
 
-    elif "修理完了連絡済" in status:
+    elif status == STATUS_DONE_STORE:
         flex_message = build_store_pickup_flex_message(record)
         line_res = send_line_push_messages(user_id, [flex_message])
 
@@ -2008,6 +1450,7 @@ def handle_location_message(user_id, reply_token, message):
                 )
             elif henkyakuhouhou == "LINEで位置情報を送る":
                 updated_record = get_kintone_record(record_id)
+
                 if updated_record:
                     return_card = build_return_location_request_flex_message(updated_record)
                     send_line_reply_messages(reply_token, [return_card])
@@ -2113,7 +1556,7 @@ def handle_postback(user_id, reply_token, data):
             )
             return
 
-        if current_status in ["🔴中止(返却)", "❌中止(処分)"]:
+        if is_cancel_status(current_status):
             send_line_reply(
                 reply_token,
                 "この修理受付は、すでに中止対応済みです。\n変更が必要な場合は店舗までご連絡ください。"
@@ -2169,7 +1612,7 @@ def handle_postback(user_id, reply_token, data):
             )
             return
 
-        if current_status in ["📦受注(部品待ち)", "✉️修理完了連絡済", "🟢完了(精算済)"]:
+        if is_ordered_status(current_status) or is_done_status(current_status) or is_complete_status(current_status):
             send_line_reply(
                 reply_token,
                 "この修理受付は、すでに修理進行中または完了済みです。\n変更が必要な場合は店舗までご連絡ください。"
@@ -2251,10 +1694,6 @@ def handle_postback(user_id, reply_token, data):
 
     send_line_reply(reply_token, "未対応の操作です。")
 
-
-# =========================
-# 起動
-# =========================
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
