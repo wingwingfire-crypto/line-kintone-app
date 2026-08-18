@@ -132,6 +132,22 @@ def send_line_reply(reply_token, text, quick_reply_items=None):
     return res
 
 
+def send_line_reply_messages(reply_token, messages):
+    payload = {
+        "replyToken": reply_token,
+        "messages": messages
+    }
+
+    res = requests.post(
+        LINE_REPLY_URL,
+        headers=line_headers(),
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    )
+
+    print("LINE複数返信:", res.text)
+    return res
+
+
 def send_line_push(user_id, text, quick_reply_items=None):
     message = {
         "type": "text",
@@ -180,17 +196,6 @@ def quick_reply_location(label="📍 位置情報を送る"):
         "action": {
             "type": "location",
             "label": label
-        }
-    }
-
-
-def quick_reply_text(label, text):
-    return {
-        "type": "action",
-        "action": {
-            "type": "message",
-            "label": label,
-            "text": text
         }
     }
 
@@ -352,13 +357,7 @@ def update_repair_answer(record_id, answer):
     }
 
     if answer == "修理する":
-        fields["ドロップダウン"] = make_field("受注")
-
-    # 注意：
-    # Kintoneのドロップダウンに「中止」がない場合があるため、
-    # キャンセル時はドロップダウンを変更せず、shurikahikaitoのみ保存します。
-    if answer == "キャンセル":
-        pass
+        fields["ドロップダウン"] = make_field("📦受注(部品待ち)")
 
     return update_kintone_record(record_id, fields)
 
@@ -367,6 +366,15 @@ def update_cancel_action(record_id, action):
     fields = {
         "canceltaio": make_field(action)
     }
+
+    if action == "店舗引取":
+        fields["ドロップダウン"] = make_field("🔴中止(返却)")
+
+    if action == "返送":
+        fields["ドロップダウン"] = make_field("🔴中止(返却)")
+
+    if action == "処分":
+        fields["ドロップダウン"] = make_field("❌中止(処分)")
 
     return update_kintone_record(record_id, fields)
 
@@ -477,7 +485,7 @@ def build_notify_message(record):
     estimate_detail = getvalue(record, "mitsumorinaiyo", "")
     tracking = getvalue(record, "okurijobango", "")
 
-    if status == "⚪修理受付中":
+    if status == "🟣修理受付中":
         return f"""修理のお申込みを受け付けました
 
 受付番号：{record_id}
@@ -489,7 +497,7 @@ def build_notify_message(record):
 
 確認・準備が整い次第、次のご案内をお送りいたしますので少々お待ちください。"""
 
-    if status == "集荷依頼済":
+    if status == "🚚集荷依頼済":
         return f"""修理品の集荷手配が完了しました
 
 受付番号：{record_id}
@@ -520,7 +528,7 @@ def build_notify_message(record):
 
 ◎修理を進めるか、キャンセルされるかをご回答ください。"""
 
-    if status == "受注":
+    if status == "📦受注(部品待ち)" or "受注" in status:
         return f"""修理作業を開始いたします
 
 受付番号：{record_id}
@@ -550,23 +558,38 @@ def build_notify_message(record):
 
 この度は修理サービスをご利用いただき、誠にありがとうございました。"""
 
-    if "修理完了連絡済" in status and ("店頭" in status or "引取" in status or "受取" in status):
+    if "修理完了連絡済" in status:
         return f"""修理が完了いたしました
 
 受付番号：{record_id}
 
 大変お待たせいたしました。
-修理作業が完了し、店頭にてお渡しの準備が整っております。
+修理作業が完了し、店頭または返却の準備が整っております。
 
-ご都合の良いタイミングでご来店をお願いいたします。
-ご来店の際は、本LINE画面または受付番号をスタッフへご提示ください。"""
+詳細については店舗よりご案内いたします。"""
 
-    if status == "完了・出荷済" or "完了" in status:
+    if "完了" in status:
         return f"""修理対応が完了しました
 
 受付番号：{record_id}
 
 この度は修理サービスをご利用いただき、誠にありがとうございました。"""
+
+    if status == "🔴中止(返却)":
+        return f"""修理キャンセル後の返却対応について
+
+受付番号：{record_id}
+
+修理中止のご連絡を承りました。
+お預かりした修理品は返却対応として進めます。"""
+
+    if status == "❌中止(処分)":
+        return f"""修理キャンセル後の処分対応について
+
+受付番号：{record_id}
+
+修理中止のご連絡を承りました。
+お預かりした修理品は当店にて処分対応として進めます。"""
 
     return build_status_text(record)
 
@@ -788,6 +811,162 @@ def build_estimate_flex_message(record):
     }
 
 
+def build_cancel_action_flex_message(record):
+    record_id = getvalue(record, "$id", "")
+    name = getvalue(record, "customer_name", "")
+    maker = getvalue(record, "maker", "")
+    model = getvalue(record, "model", "")
+
+    repair_item = maker or "修理品"
+    if model:
+        repair_item += f" / {model}"
+
+    return {
+        "type": "flex",
+        "altText": "キャンセル後の対応を選択してください",
+        "contents": {
+            "type": "bubble",
+            "size": "mega",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#D32F2F",
+                "paddingAll": "16px",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "❌ キャンセルを受け付けました",
+                        "weight": "bold",
+                        "size": "lg",
+                        "color": "#FFFFFF",
+                        "wrap": True
+                    },
+                    {
+                        "type": "text",
+                        "text": f"受付番号：{record_id}",
+                        "size": "sm",
+                        "color": "#FFEBEE",
+                        "margin": "sm"
+                    }
+                ]
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"{name or 'お客様'} 様",
+                        "weight": "bold",
+                        "size": "md",
+                        "color": "#222222",
+                        "wrap": True
+                    },
+                    {
+                        "type": "text",
+                        "text": "修理キャンセルのご回答を受け付けました。",
+                        "size": "sm",
+                        "color": "#555555",
+                        "wrap": True
+                    },
+                    {
+                        "type": "separator",
+                        "margin": "md"
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "spacing": "sm",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "対象修理品",
+                                "size": "sm",
+                                "weight": "bold",
+                                "color": "#D32F2F"
+                            },
+                            {
+                                "type": "text",
+                                "text": repair_item,
+                                "size": "sm",
+                                "color": "#333333",
+                                "wrap": True
+                            }
+                        ]
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "backgroundColor": "#FFF5F5",
+                        "cornerRadius": "12px",
+                        "paddingAll": "14px",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "今後の対応を選択してください",
+                                "size": "sm",
+                                "weight": "bold",
+                                "color": "#D32F2F",
+                                "wrap": True
+                            },
+                            {
+                                "type": "text",
+                                "text": "お預かりしている修理品について、店舗引取・返送・処分のいずれかを選択してください。",
+                                "size": "sm",
+                                "color": "#333333",
+                                "wrap": True,
+                                "margin": "sm"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    {
+                        "type": "button",
+                        "style": "primary",
+                        "height": "sm",
+                        "color": "#1565C0",
+                        "action": {
+                            "type": "postback",
+                            "label": "店舗引取",
+                            "data": f"action=cancel_store&recordid={record_id}",
+                            "displayText": "店舗引取"
+                        }
+                    },
+                    {
+                        "type": "button",
+                        "style": "secondary",
+                        "height": "sm",
+                        "action": {
+                            "type": "postback",
+                            "label": "返送",
+                            "data": f"action=cancel_return&recordid={record_id}",
+                            "displayText": "返送"
+                        }
+                    },
+                    {
+                        "type": "button",
+                        "style": "secondary",
+                        "height": "sm",
+                        "action": {
+                            "type": "postback",
+                            "label": "処分",
+                            "data": f"action=cancel_dispose&recordid={record_id}",
+                            "displayText": "処分"
+                        }
+                    }
+                ]
+            }
+        }
+    }
+
+
 def build_notify_quick_replies(record_id, status):
     items = []
 
@@ -882,7 +1061,7 @@ def submit():
         "kiyakuagree": make_field(kiyakuagree),
 
         "notifyurl": make_field(notify_url),
-        "ドロップダウン": make_field("⚪修理受付中")
+        "ドロップダウン": make_field("🟣修理受付中")
     }
 
     res = add_kintone_record(record)
@@ -1232,35 +1411,28 @@ def handle_postback(user_id, reply_token, data):
     if action == "cancel":
         res = update_repair_answer(record_id, "キャンセル")
 
-        if res.ok:
-            text = """キャンセルのご回答を受け付けました。
-
-お預かりしている修理品について、今後の対応を選択してください。"""
-
-            quick_items = [
-                quick_reply_postback(
-                    "店舗引取",
-                    f"action=cancel_store&recordid={record_id}",
-                    "店舗引取"
-                ),
-                quick_reply_postback(
-                    "返送",
-                    f"action=cancel_return&recordid={record_id}",
-                    "返送"
-                ),
-                quick_reply_postback(
-                    "処分",
-                    f"action=cancel_dispose&recordid={record_id}",
-                    "処分"
-                )
-            ]
-
-            send_line_reply(reply_token, text, quick_items)
-        else:
+        if not res.ok:
             send_line_reply(
                 reply_token,
                 "キャンセル回答の登録に失敗しました。お手数ですが店舗までご連絡ください。"
             )
+            return
+
+        record = get_kintone_record(record_id)
+
+        if not record:
+            send_line_reply(
+                reply_token,
+                "キャンセルは受け付けましたが、対象レコードの取得に失敗しました。"
+            )
+            return
+
+        cancel_card = build_cancel_action_flex_message(record)
+
+        send_line_reply_messages(
+            reply_token,
+            [cancel_card]
+        )
         return
 
     if action == "cancel_store":
@@ -1281,7 +1453,7 @@ def handle_postback(user_id, reply_token, data):
         if res.ok:
             send_line_reply(
                 reply_token,
-                "返送で承りました。\n着払いでの返送手配を進めます。"
+                "返送で承りました。\n返送手配を進めます。"
             )
         else:
             send_line_reply(reply_token, "登録に失敗しました。")
