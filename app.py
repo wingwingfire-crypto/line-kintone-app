@@ -537,7 +537,7 @@ def build_notify_message(record):
     estimate_detail = getvalue(record, "mitsumorinaiyo", "")
     tracking = getvalue(record, "okurijobango", "")
 
-    if status == "🟣修理受付中":
+    if status == "⚪修理受付中":
         return f"""修理のお申込みを受け付けました
 
 受付番号：{record_id}
@@ -1502,7 +1502,7 @@ def submit():
         "kiyakuagree": make_field(kiyakuagree),
 
         "notifyurl": make_field(notify_url),
-        "ドロップダウン": make_field("🟣修理受付中")
+        "ドロップダウン": make_field("⚪修理受付中")
     }
 
     res = add_kintone_record(record)
