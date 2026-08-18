@@ -461,7 +461,7 @@ button:hover:not(:disabled) {
                 <div class="method-grid pickup-method-grid">
                     <div class="method-card" data-pickup-method="集荷依頼・LINEで位置情報を送る">
                         <strong>LINEで位置情報を送る</strong>
-                        <span>フォーム送信後、LINEトークから位置情報を送信</span>
+                        <span>受付後にLINEへ届くボタンを押してください</span>
                     </div>
 
                     <div class="method-card" data-pickup-method="集荷依頼・住所を入力する">
@@ -471,15 +471,9 @@ button:hover:not(:disabled) {
                 </div>
 
                 <div id="locationGuideBox" class="guide-box hidden">
-                    <strong>📍 集荷場所の位置情報を送る流れ</strong>
-
-                    <div class="guide-step">① フォーム送信後、このLINEトーク画面を開く</div>
-                    <div class="guide-step">② 画面左下の「＋」ボタンを押す</div>
-                    <div class="guide-step">③ 「位置情報」を選ぶ</div>
-                    <div class="guide-step">④ 集荷場所を地図で選ぶ</div>
-                    <div class="guide-step">⑤ 「送信」を押す</div>
-
-                    <p class="hint">位置情報を送信いただくと、集荷場所として登録されます。</p>
+                    <strong>📍 集荷場所の送り方</strong>
+                    <div class="guide-step">受付後、LINEに届く「📍 集荷場所を送る」ボタンを押してください。</div>
+                    <p class="hint">ボタンを押すと位置情報画面が開きます。場所を選んで緑の✅を押してください。</p>
                 </div>
             </div>
         </div>
@@ -556,34 +550,50 @@ button:hover:not(:disabled) {
                     <div class="method-grid">
                         <div class="method-card" data-return-method="住所を入力する">
                             <strong>住所を入力する</strong>
-                            <span>返却先住所をフォームに入力</span>
+                            <span>郵便番号から住所検索できます</span>
                         </div>
 
                         <div class="method-card" data-return-method="LINEで位置情報を送る">
                             <strong>LINEで位置情報を送る</strong>
-                            <span>フォーム送信後、LINEで返却場所の位置情報を送信</span>
+                            <span>受付後にLINEへ届くボタンを押してください</span>
                         </div>
                     </div>
 
                     <div id="returnAddressBox" class="hidden">
+                        <label>返却先 郵便番号 <span class="optional">任意</span></label>
+
+                        <div class="zip-row">
+                            <input
+                                type="text"
+                                id="returnZipcode"
+                                name="returnZipcode"
+                                placeholder="例：7000972"
+                                inputmode="numeric"
+                                maxlength="8"
+                            >
+                            <button type="button" id="returnZipSearchBtn">住所検索</button>
+                        </div>
+
+                        <p class="hint">
+                            郵便番号を入力して住所検索を押すと、返却住所を自動入力できます。
+                        </p>
+
                         <label>返却住所 <span class="required">必須</span></label>
                         <textarea
                             id="henkyakujusho"
                             name="henkyakujusho"
                             placeholder="例：岡山県岡山市北区〇〇 1-2-3"
                         ></textarea>
+
+                        <p class="hint">
+                            番地・建物名・部屋番号などは、必要に応じて追加入力してください。
+                        </p>
                     </div>
 
                     <div id="returnLocationGuideBox" class="guide-box hidden">
-                        <strong>📍 返却場所の位置情報を送る流れ</strong>
-
-                        <div class="guide-step">① フォーム送信後、このLINEトーク画面を開く</div>
-                        <div class="guide-step">② 画面左下の「＋」ボタンを押す</div>
-                        <div class="guide-step">③ 「位置情報」を選ぶ</div>
-                        <div class="guide-step">④ 返却場所を地図で選ぶ</div>
-                        <div class="guide-step">⑤ 「送信」を押す</div>
-
-                        <p class="hint">返却場所の位置情報として登録します。</p>
+                        <strong>📍 返却場所の送り方</strong>
+                        <div class="guide-step">受付後、LINEに届く「📍 返却場所を送る」ボタンを押してください。</div>
+                        <p class="hint">ボタンを押すと位置情報画面が開きます。場所を選んで緑の✅を押してください。</p>
                     </div>
                 </div>
             </div>
@@ -793,6 +803,7 @@ document.querySelectorAll("[data-return-same]").forEach(card => {
         const returnLocationGuideBox = document.getElementById("returnLocationGuideBox");
         const henkyakuhouhou = document.getElementById("henkyakuhouhou");
         const henkyakujusho = document.getElementById("henkyakujusho");
+        const returnZipcode = document.getElementById("returnZipcode");
 
         document.querySelectorAll("[data-return-method]").forEach(c => c.classList.remove("active"));
 
@@ -811,6 +822,10 @@ document.querySelectorAll("[data-return-same]").forEach(card => {
             } else {
                 henkyakujusho.value = "集荷場所と同じ";
             }
+
+            if (returnZipcode) {
+                returnZipcode.value = "";
+            }
         }
 
         if (same === "いいえ") {
@@ -821,6 +836,10 @@ document.querySelectorAll("[data-return-same]").forEach(card => {
             henkyakuhouhou.value = "";
             henkyakujusho.value = "";
             henkyakujusho.required = false;
+
+            if (returnZipcode) {
+                returnZipcode.value = "";
+            }
         }
     });
 });
@@ -836,6 +855,7 @@ document.querySelectorAll("[data-return-method]").forEach(card => {
         const returnAddressBox = document.getElementById("returnAddressBox");
         const returnLocationGuideBox = document.getElementById("returnLocationGuideBox");
         const henkyakujusho = document.getElementById("henkyakujusho");
+        const returnZipcode = document.getElementById("returnZipcode");
 
         henkyakuhouhou.value = method;
 
@@ -852,6 +872,10 @@ document.querySelectorAll("[data-return-method]").forEach(card => {
 
             henkyakujusho.required = false;
             henkyakujusho.value = "";
+
+            if (returnZipcode) {
+                returnZipcode.value = "";
+            }
         }
     });
 });
@@ -867,8 +891,32 @@ document.getElementById("shukajusho").addEventListener("input", function () {
 });
 
 document.getElementById("zipSearchBtn").addEventListener("click", async function () {
-    const zipcodeInput = document.getElementById("zipcode");
-    const addressInput = document.getElementById("shukajusho");
+    await searchZipAndFill({
+        zipcodeInputId: "zipcode",
+        addressInputId: "shukajusho",
+        button: this,
+        afterFill: function (address) {
+            const sameaddress = document.getElementById("sameaddress").value;
+            if (sameaddress === "はい") {
+                document.getElementById("henkyakujusho").value = address;
+            }
+        }
+    });
+});
+
+document.getElementById("returnZipSearchBtn").addEventListener("click", async function () {
+    await searchZipAndFill({
+        zipcodeInputId: "returnZipcode",
+        addressInputId: "henkyakujusho",
+        button: this,
+        afterFill: function () {}
+    });
+});
+
+async function searchZipAndFill(options) {
+    const zipcodeInput = document.getElementById(options.zipcodeInputId);
+    const addressInput = document.getElementById(options.addressInputId);
+    const button = options.button;
 
     const zipcode = zipcodeInput.value.replace("-", "").trim();
 
@@ -883,8 +931,8 @@ document.getElementById("zipSearchBtn").addEventListener("click", async function
     }
 
     try {
-        this.disabled = true;
-        this.textContent = "検索中";
+        button.disabled = true;
+        button.textContent = "検索中";
 
         const response = await fetch(
             "https://zipcloud.ibsnet.co.jp/api/search?zipcode=" + zipcode
@@ -906,24 +954,28 @@ document.getElementById("zipSearchBtn").addEventListener("click", async function
 
         addressInput.value = address;
 
-        const sameaddress = document.getElementById("sameaddress").value;
-        if (sameaddress === "はい") {
-            document.getElementById("henkyakujusho").value = address;
+        if (typeof options.afterFill === "function") {
+            options.afterFill(address);
         }
 
     } catch (err) {
         console.error("郵便番号検索エラー:", err);
         alert("住所検索に失敗しました。手入力してください。");
     } finally {
-        this.disabled = false;
-        this.textContent = "住所検索";
+        button.disabled = false;
+        button.textContent = "住所検索";
     }
-});
+}
 
 function resetReturnFields() {
     document.getElementById("sameaddress").value = "";
     document.getElementById("henkyakuhouhou").value = "";
     document.getElementById("henkyakujusho").value = "";
+
+    const returnZipcode = document.getElementById("returnZipcode");
+    if (returnZipcode) {
+        returnZipcode.value = "";
+    }
 
     document.getElementById("henkyakujusho").required = false;
 
@@ -1062,7 +1114,7 @@ document.getElementById("repairForm").addEventListener("submit", async function 
         if (method === "店舗持ち込み") {
             successText = `
                 <div class="success-box">
-                    <strong>✅ 受付完了しました。</strong><br><br>
+                    <strong>✅ 修理受付を完了しました。</strong><br><br>
                     修理品は下記店舗までお持ち込みください。
                     ${storeInfoHtml}
                 </div>
@@ -1070,29 +1122,17 @@ document.getElementById("repairForm").addEventListener("submit", async function 
         } else if (method === "集荷依頼・LINEで位置情報を送る") {
             successText = `
                 <div class="success-box">
-                    <strong>✅ 受付完了しました。</strong><br><br>
-
-                    次に、LINEトーク画面から
-                    <strong>集荷場所の位置情報</strong>を送信してください。<br><br>
-
-                    <div class="guide-box">
-                        <strong>📍 集荷場所の位置情報の送り方</strong>
-
-                        <div class="guide-step">① このLINEトーク画面を開く</div>
-                        <div class="guide-step">② 画面左下の「＋」ボタンを押す</div>
-                        <div class="guide-step">③ 「位置情報」を選ぶ</div>
-                        <div class="guide-step">④ 集荷場所を地図で選ぶ</div>
-                        <div class="guide-step">⑤ 「送信」を押す</div>
-                    </div>
-
-                    <br>
-                    位置情報を送信いただくと、集荷場所として登録されます。
+                    <strong>✅ 修理受付を完了しました。</strong><br><br>
+                    LINEトークに届いた
+                    <strong>「📍 集荷場所を送る」ボタン</strong>
+                    を押してください。<br><br>
+                    ボタンを押したあと、場所を選んで緑の✅を押してください。
                 </div>
             `;
         } else if (method === "集荷依頼・住所を入力する") {
             successText = `
                 <div class="success-box">
-                    <strong>✅ 受付完了しました。</strong><br><br>
+                    <strong>✅ 修理受付を完了しました。</strong><br><br>
                     入力いただいた住所をもとに集荷手配を進めます。<br>
                     集荷希望日・時間については、確認後にご連絡する場合があります。
                 </div>
@@ -1100,7 +1140,7 @@ document.getElementById("repairForm").addEventListener("submit", async function 
         } else {
             successText = `
                 <div class="success-box">
-                    <strong>✅ 受付完了しました。</strong>
+                    <strong>✅ 修理受付を完了しました。</strong>
                 </div>
             `;
         }
@@ -1109,8 +1149,10 @@ document.getElementById("repairForm").addEventListener("submit", async function 
             successText += `
                 <div class="success-box" style="margin-top:12px;">
                     <strong>📍 返却場所について</strong><br>
-                    返却場所もLINE位置情報で指定する場合は、続けて返却場所の位置情報を送信してください。<br>
-                    ※次工程で、返却場所用の位置情報保存処理をapp.pyに追加します。
+                    集荷場所の送信後、LINEトークに
+                    <strong>「📍 返却場所を送る」ボタン</strong>
+                    が届きます。<br>
+                    そのボタンを押して返却場所を送ってください。
                 </div>
             `;
         }
