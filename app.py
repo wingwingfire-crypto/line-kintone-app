@@ -649,6 +649,266 @@ def build_notify_message(record):
 # Flex Messageカード作成
 # =========================
 
+def build_receipt_flex_message(record_id, name):
+    return {
+        "type": "flex",
+        "altText": "修理受付を受け付けました",
+        "contents": {
+            "type": "bubble",
+            "size": "mega",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#06C755",
+                "paddingAll": "16px",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "✅ 修理受付を受け付けました",
+                        "weight": "bold",
+                        "size": "lg",
+                        "color": "#FFFFFF",
+                        "wrap": True
+                    },
+                    {
+                        "type": "text",
+                        "text": f"受付番号：{record_id}",
+                        "size": "sm",
+                        "color": "#E8F5E9",
+                        "margin": "sm"
+                    }
+                ]
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"{name or 'お客様'} 様",
+                        "weight": "bold",
+                        "size": "md",
+                        "wrap": True
+                    },
+                    {
+                        "type": "text",
+                        "text": "修理のお申し込みありがとうございます。内容を確認し、準備が整い次第ご案内いたします。",
+                        "size": "sm",
+                        "color": "#555555",
+                        "wrap": True
+                    },
+                    {
+                        "type": "separator",
+                        "margin": "md"
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "backgroundColor": "#F3FFF7",
+                        "cornerRadius": "12px",
+                        "paddingAll": "14px",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "現在の状態",
+                                "size": "sm",
+                                "weight": "bold",
+                                "color": "#06C755"
+                            },
+                            {
+                                "type": "text",
+                                "text": "⚪修理受付中",
+                                "size": "lg",
+                                "weight": "bold",
+                                "margin": "sm",
+                                "wrap": True
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+
+
+def build_pickup_location_request_flex_message(record_id, name):
+    return {
+        "type": "flex",
+        "altText": "集荷場所を送信してください",
+        "quickReply": {
+            "items": [
+                quick_reply_location("📍 集荷場所を送る")
+            ]
+        },
+        "contents": {
+            "type": "bubble",
+            "size": "mega",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#1976D2",
+                "paddingAll": "16px",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "📍 集荷場所を登録してください",
+                        "weight": "bold",
+                        "size": "lg",
+                        "color": "#FFFFFF",
+                        "wrap": True
+                    },
+                    {
+                        "type": "text",
+                        "text": f"受付番号：{record_id}",
+                        "size": "sm",
+                        "color": "#E3F2FD",
+                        "margin": "sm"
+                    }
+                ]
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"{name or 'お客様'} 様",
+                        "weight": "bold",
+                        "size": "md",
+                        "wrap": True
+                    },
+                    {
+                        "type": "text",
+                        "text": "配送業者が集荷へ伺うため、集荷場所の位置情報を送信してください。",
+                        "size": "sm",
+                        "color": "#555555",
+                        "wrap": True
+                    },
+                    {
+                        "type": "separator",
+                        "margin": "md"
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "backgroundColor": "#F2F8FF",
+                        "cornerRadius": "12px",
+                        "paddingAll": "14px",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "操作方法",
+                                "size": "sm",
+                                "weight": "bold",
+                                "color": "#1976D2"
+                            },
+                            {
+                                "type": "text",
+                                "text": "下の「📍 集荷場所を送る」ボタンを押し、位置情報画面で集荷場所を選んで、緑の✅を押してください。",
+                                "size": "sm",
+                                "wrap": True,
+                                "margin": "sm"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+
+
+def build_return_location_request_flex_message(record):
+    record_id = getvalue(record, "$id", "")
+    name = getvalue(record, "customer_name", "")
+
+    return {
+        "type": "flex",
+        "altText": "返却場所を送信してください",
+        "quickReply": {
+            "items": [
+                quick_reply_location("📍 返却場所を送る")
+            ]
+        },
+        "contents": {
+            "type": "bubble",
+            "size": "mega",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#6A1B9A",
+                "paddingAll": "16px",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "📦 返却場所を登録してください",
+                        "weight": "bold",
+                        "size": "lg",
+                        "color": "#FFFFFF",
+                        "wrap": True
+                    },
+                    {
+                        "type": "text",
+                        "text": f"受付番号：{record_id}",
+                        "size": "sm",
+                        "color": "#F3E5F5",
+                        "margin": "sm"
+                    }
+                ]
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"{name or 'お客様'} 様",
+                        "weight": "bold",
+                        "size": "md",
+                        "wrap": True
+                    },
+                    {
+                        "type": "text",
+                        "text": "集荷場所を登録しました。続いて、修理完了後の返却場所を送信してください。",
+                        "size": "sm",
+                        "color": "#555555",
+                        "wrap": True
+                    },
+                    {
+                        "type": "separator",
+                        "margin": "md"
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "backgroundColor": "#FAF2FF",
+                        "cornerRadius": "12px",
+                        "paddingAll": "14px",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "操作方法",
+                                "size": "sm",
+                                "weight": "bold",
+                                "color": "#6A1B9A"
+                            },
+                            {
+                                "type": "text",
+                                "text": "下の「📍 返却場所を送る」ボタンを押し、位置情報画面で返却場所を選んで、緑の✅を押してください。",
+                                "size": "sm",
+                                "wrap": True,
+                                "margin": "sm"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+
+
 def build_estimate_flex_message(record):
     record_id = getvalue(record, "$id", "")
     name = getvalue(record, "customer_name", "")
@@ -1513,41 +1773,25 @@ def submit():
     result = res.json()
     record_id = result.get("id", "")
 
-    base_message = f"""修理受付を受け付けました。
-
-受付番号：{record_id}
-
-{name}様
-
-お申し込みありがとうございます。
-内容を確認し、準備が整い次第ご案内いたします。"""
+    receipt_card = build_receipt_flex_message(record_id, name)
 
     if uketorihouhou == "集荷依頼・LINEで位置情報を送る":
-        location_message = """📍 集荷場所の送信が必要です
+        pickup_card = build_pickup_location_request_flex_message(record_id, name)
 
-下の「📍 集荷場所を送る」ボタンを押してください。
-
-位置情報画面が開いたら、集荷場所を選び、緑の✅を押してください。"""
-
-        messages = [
-            {
-                "type": "text",
-                "text": base_message
-            },
-            {
-                "type": "text",
-                "text": location_message,
-                "quickReply": {
-                    "items": [
-                        quick_reply_location("📍 集荷場所を送る")
-                    ]
-                }
-            }
-        ]
-
-        send_line_push_messages(lineuserid, messages)
+        send_line_push_messages(
+            lineuserid,
+            [
+                receipt_card,
+                pickup_card
+            ]
+        )
     else:
-        send_line_push(lineuserid, base_message)
+        send_line_push_messages(
+            lineuserid,
+            [
+                receipt_card
+            ]
+        )
 
     return "OK", 200
 
@@ -1763,17 +2007,16 @@ def handle_location_message(user_id, reply_token, message):
                     "集荷場所を登録しました。\n返却場所は集荷場所と同じとして登録しています。"
                 )
             elif henkyakuhouhou == "LINEで位置情報を送る":
-                send_line_reply(
-                    reply_token,
-                    """集荷場所を登録しました。
-
-📍 次に、返却場所を送ってください
-
-下の「📍 返却場所を送る」ボタンを押してください。
-
-位置情報画面が開いたら、返却場所を選び、緑の✅を押してください。""",
-                    [quick_reply_location("📍 返却場所を送る")]
-                )
+                updated_record = get_kintone_record(record_id)
+                if updated_record:
+                    return_card = build_return_location_request_flex_message(updated_record)
+                    send_line_reply_messages(reply_token, [return_card])
+                else:
+                    send_line_reply(
+                        reply_token,
+                        "集荷場所を登録しました。\n続いて返却場所の位置情報を送信してください。",
+                        [quick_reply_location("📍 返却場所を送る")]
+                    )
             else:
                 send_line_reply(reply_token, "集荷場所を登録しました。")
         else:
