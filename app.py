@@ -102,6 +102,15 @@ def make_repair_item_text(record):
     return " / ".join(parts) if parts else "修理品情報 未入力"
 
 
+def normalize_uketorihouhou_for_kintone(raw_uketorihouhou):
+    """Kintoneの受け渡し方法は店舗持ち込み/集荷依頼の2択で保存する。"""
+    if raw_uketorihouhou == "店舗持ち込み":
+        return "店舗持ち込み"
+    if raw_uketorihouhou.startswith("集荷依頼"):
+        return "集荷依頼"
+    return raw_uketorihouhou
+
+
 def is_ordered_status(status):
     return status in [STATUS_ORDERED, OLD_STATUS_ORDERED] or "受注" in status
 
@@ -341,7 +350,30 @@ def tc(text, size="sm", weight=None, color=None, margin=None):
 
 
 def make_card(title, record_id, color, sub_color, body, footer=None, alt=None, quick=None):
-    msg = {"type": "flex", "altText": alt or title, "contents": {"type": "bubble", "size": "mega", "header": {"type": "box", "layout": "vertical", "backgroundColor": color, "paddingAll": "16px", "contents": [tc(title, "lg", "bold", "#FFFFFF"), tc(f"受付番号：{record_id}", "sm", None, sub_color, "sm")]}, "body": {"type": "box", "layout": "vertical", "spacing": "md", "contents": body}}}
+    msg = {
+        "type": "flex",
+        "altText": alt or title,
+        "contents": {
+            "type": "bubble",
+            "size": "mega",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": color,
+                "paddingAll": "16px",
+                "contents": [
+                    tc(title, "lg", "bold", "#FFFFFF"),
+                    tc(f"受付番号：{record_id}", "sm", None, sub_color, "sm")
+                ]
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "md",
+                "contents": body
+            }
+        }
+    }
     if footer:
         msg["contents"]["footer"] = {"type": "box", "layout": "vertical", "spacing": "sm", "contents": footer}
     if quick:
@@ -350,52 +382,127 @@ def make_card(title, record_id, color, sub_color, body, footer=None, alt=None, q
 
 
 def info_box(title, value, color, bg):
-    return {"type": "box", "layout": "vertical", "backgroundColor": bg, "cornerRadius": "12px", "paddingAll": "14px", "margin": "md", "contents": [tc(title, "sm", "bold", color), tc(value, "lg", "bold", None, "sm")]}
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": bg,
+        "cornerRadius": "12px",
+        "paddingAll": "14px",
+        "margin": "md",
+        "contents": [
+            tc(title, "sm", "bold", color),
+            tc(value, "lg", "bold", None, "sm")
+        ]
+    }
 
 
 def build_receipt_flex_message(record_id, name):
-    return make_card("✅ 修理受付を完了しました", record_id, "#06C755", "#E8F5E9", [tc(f"{name or 'お客様'} 様", "md", "bold"), tc("修理のお申し込みありがとうございます。内容を確認し、準備が整い次第ご案内いたします。", color="#555555"), {"type": "separator", "margin": "md"}, info_box("現在の状態", STATUS_RECEIVED, "#06C755", "#F3FFF7")], alt="修理受付を完了しました")
+    body = [
+        tc(f"{name or 'お客様'} 様", "md", "bold"),
+        tc("修理のお申し込みありがとうございます。内容を確認し、準備が整い次第ご案内いたします。", color="#555555"),
+        {"type": "separator", "margin": "md"},
+        info_box("現在の状態", STATUS_RECEIVED, "#06C755", "#F3FFF7")
+    ]
+    return make_card("✅ 修理受付を完了しました", record_id, "#06C755", "#E8F5E9", body, alt="修理受付を完了しました")
 
 
 def build_pickup_location_request_flex_message(record_id, name):
-    return make_card("📍 集荷場所を登録してください", record_id, "#1976D2", "#E3F2FD", [tc(f"{name or 'お客様'} 様", "md", "bold"), tc("下の「📍 集荷場所を送る」ボタンを押してください。", color="#555555"), tc("位置情報画面が開いたら、場所を選んで緑の✅を押してください。", color="#555555")], alt="集荷場所を送信してください", quick=[quick_reply_location("📍 集荷場所を送る")])
+    body = [
+        tc(f"{name or 'お客様'} 様", "md", "bold"),
+        tc("下の「📍 集荷場所を送る」ボタンを押してください。", color="#555555"),
+        tc("位置情報画面が開いたら、場所を選んで緑の✅を押してください。", color="#555555")
+    ]
+    return make_card("📍 集荷場所を登録してください", record_id, "#1976D2", "#E3F2FD", body, alt="集荷場所を送信してください", quick=[quick_reply_location("📍 集荷場所を送る")])
 
 
 def build_return_location_request_flex_message(record):
     record_id = getvalue(record, "$id", "")
     name = getvalue(record, "customer_name", "")
-    return make_card("📦 返却場所を登録してください", record_id, "#6A1B9A", "#F3E5F5", [tc(f"{name or 'お客様'} 様", "md", "bold"), tc("下の「📍 返却場所を送る」ボタンを押してください。", color="#555555"), tc("位置情報画面が開いたら、場所を選んで緑の✅を押してください。", color="#555555")], alt="返却場所を送信してください", quick=[quick_reply_location("📍 返却場所を送る")])
+    body = [
+        tc(f"{name or 'お客様'} 様", "md", "bold"),
+        tc("下の「📍 返却場所を送る」ボタンを押してください。", color="#555555"),
+        tc("位置情報画面が開いたら、場所を選んで緑の✅を押してください。", color="#555555")
+    ]
+    return make_card("📦 返却場所を登録してください", record_id, "#6A1B9A", "#F3E5F5", body, alt="返却場所を送信してください", quick=[quick_reply_location("📍 返却場所を送る")])
 
 
 def build_estimate_flex_message(record):
     record_id = getvalue(record, "$id", "")
-    body = [tc(f"{getvalue(record, 'customer_name', '') or 'お客様'} 様", "md", "bold"), tc("修理品のお見積りが完了しました。", color="#666666"), {"type": "separator", "margin": "md"}, tc("修理品情報", weight="bold", color="#06C755"), tc(f"メーカー：{getvalue(record, 'maker', '') or '未入力'}"), tc(f"型番：{getvalue(record, 'model', '') or '未入力'}"), tc(f"機番：{getvalue(record, 'serial', '') or '未入力'}"), tc("故障内容", weight="bold", color="#06C755", margin="md"), tc(shorten_text(getvalue(record, 'issue', ''), 70)), info_box("お見積り金額", format_yen(getvalue(record, 'mitsumorikingaku', '')), "#06C755", "#F3FFF7"), tc("お見積り内容", weight="bold", color="#06C755", margin="md"), tc(shorten_text(getvalue(record, 'mitsumorinaiyo', ''), 80))]
-    footer = [{"type": "button", "style": "primary", "height": "sm", "color": "#06C755", "action": {"type": "postback", "label": "修理する", "data": f"action=repair&recordid={record_id}", "displayText": "修理する"}}, {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "キャンセルする", "data": f"action=cancel&recordid={record_id}", "displayText": "キャンセルする"}}]
+    body = [
+        tc(f"{getvalue(record, 'customer_name', '') or 'お客様'} 様", "md", "bold"),
+        tc("修理品のお見積りが完了しました。", color="#666666"),
+        {"type": "separator", "margin": "md"},
+        tc("修理品情報", weight="bold", color="#06C755"),
+        tc(f"メーカー：{getvalue(record, 'maker', '') or '未入力'}"),
+        tc(f"型番：{getvalue(record, 'model', '') or '未入力'}"),
+        tc(f"機番：{getvalue(record, 'serial', '') or '未入力'}"),
+        tc("故障内容", weight="bold", color="#06C755", margin="md"),
+        tc(shorten_text(getvalue(record, 'issue', ''), 70)),
+        info_box("お見積り金額", format_yen(getvalue(record, 'mitsumorikingaku', '')), "#06C755", "#F3FFF7"),
+        tc("お見積り内容", weight="bold", color="#06C755", margin="md"),
+        tc(shorten_text(getvalue(record, 'mitsumorinaiyo', ''), 80))
+    ]
+    footer = [
+        {"type": "button", "style": "primary", "height": "sm", "color": "#06C755", "action": {"type": "postback", "label": "修理する", "data": f"action=repair&recordid={record_id}", "displayText": "修理する"}},
+        {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "キャンセルする", "data": f"action=cancel&recordid={record_id}", "displayText": "キャンセルする"}}
+    ]
     return make_card("📄 修理見積が届きました", record_id, "#06C755", "#E8F5E9", body, footer, "修理のお見積りが届きました")
 
 
 def build_repair_accept_flex_message(record):
     record_id = getvalue(record, "$id", "")
-    body = [tc(f"{getvalue(record, 'customer_name', '') or 'お客様'} 様", "md", "bold"), tc("修理進行のご回答ありがとうございます。これより修理作業を進めます。", color="#555555"), {"type": "separator", "margin": "md"}, tc("対象修理品", weight="bold", color="#06C755"), tc(make_repair_item_text(record)), info_box("現在の状態", STATUS_ORDERED, "#06C755", "#F3FFF7")]
+    body = [
+        tc(f"{getvalue(record, 'customer_name', '') or 'お客様'} 様", "md", "bold"),
+        tc("修理進行のご回答ありがとうございます。これより修理作業を進めます。", color="#555555"),
+        {"type": "separator", "margin": "md"},
+        tc("対象修理品", weight="bold", color="#06C755"),
+        tc(make_repair_item_text(record)),
+        info_box("現在の状態", STATUS_ORDERED, "#06C755", "#F3FFF7")
+    ]
     return make_card("✅ 修理進行を受け付けました", record_id, "#06C755", "#E8F5E9", body)
 
 
 def build_cancel_action_flex_message(record):
     record_id = getvalue(record, "$id", "")
-    body = [tc(f"{getvalue(record, 'customer_name', '') or 'お客様'} 様", "md", "bold"), tc("修理キャンセルのご回答を受け付けました。", color="#555555"), {"type": "separator", "margin": "md"}, tc("対象修理品", weight="bold", color="#D32F2F"), tc(make_repair_item_text(record)), info_box("今後の対応を選択してください", "店舗引取・返送・処分のいずれかを選択してください。", "#D32F2F", "#FFF5F5")]
-    footer = [{"type": "button", "style": "primary", "height": "sm", "color": "#1565C0", "action": {"type": "postback", "label": "店舗引取", "data": f"action=cancel_store&recordid={record_id}", "displayText": "店舗引取"}}, {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "返送", "data": f"action=cancel_return&recordid={record_id}", "displayText": "返送"}}, {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "処分", "data": f"action=cancel_dispose&recordid={record_id}", "displayText": "処分"}}]
+    body = [
+        tc(f"{getvalue(record, 'customer_name', '') or 'お客様'} 様", "md", "bold"),
+        tc("修理キャンセルのご回答を受け付けました。", color="#555555"),
+        {"type": "separator", "margin": "md"},
+        tc("対象修理品", weight="bold", color="#D32F2F"),
+        tc(make_repair_item_text(record)),
+        info_box("今後の対応を選択してください", "店舗引取・返送・処分のいずれかを選択してください。", "#D32F2F", "#FFF5F5")
+    ]
+    footer = [
+        {"type": "button", "style": "primary", "height": "sm", "color": "#1565C0", "action": {"type": "postback", "label": "店舗引取", "data": f"action=cancel_store&recordid={record_id}", "displayText": "店舗引取"}},
+        {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "返送", "data": f"action=cancel_return&recordid={record_id}", "displayText": "返送"}},
+        {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "処分", "data": f"action=cancel_dispose&recordid={record_id}", "displayText": "処分"}}
+    ]
     return make_card("❌ キャンセルを受け付けました", record_id, "#D32F2F", "#FFEBEE", body, footer, "キャンセル後の対応を選択してください")
 
 
 def build_store_pickup_flex_message(record):
     record_id = getvalue(record, "$id", "")
-    body = [tc(f"{getvalue(record, 'customer_name', '') or 'お客様'} 様", "md", "bold"), tc("大変お待たせいたしました。修理品のお渡し準備が整いました。", color="#555555"), {"type": "separator", "margin": "md"}, tc("対象修理品", weight="bold", color="#1976D2"), tc(make_repair_item_text(record)), info_box("ご来店時のお願い", "このLINE画面、または受付番号をスタッフへお見せください。", "#1976D2", "#F2F8FF")]
+    body = [
+        tc(f"{getvalue(record, 'customer_name', '') or 'お客様'} 様", "md", "bold"),
+        tc("大変お待たせいたしました。修理品のお渡し準備が整いました。", color="#555555"),
+        {"type": "separator", "margin": "md"},
+        tc("対象修理品", weight="bold", color="#1976D2"),
+        tc(make_repair_item_text(record)),
+        info_box("ご来店時のお願い", "このLINE画面、または受付番号をスタッフへお見せください。", "#1976D2", "#F2F8FF")
+    ]
     return make_card("✅ 修理が完了しました", record_id, "#1976D2", "#E3F2FD", body)
 
 
 def build_shipping_flex_message(record):
     record_id = getvalue(record, "$id", "")
-    body = [tc(f"{getvalue(record, 'customer_name', '') or 'お客様'} 様", "md", "bold"), tc("修理作業が完了し、修理品を発送いたしました。", color="#555555"), {"type": "separator", "margin": "md"}, tc("対象修理品", weight="bold", color="#6A1B9A"), tc(make_repair_item_text(record)), info_box("お問い合わせ送り状番号", getvalue(record, "okurijobango", "") or "未入力", "#6A1B9A", "#FAF2FF")]
+    body = [
+        tc(f"{getvalue(record, 'customer_name', '') or 'お客様'} 様", "md", "bold"),
+        tc("修理作業が完了し、修理品を発送いたしました。", color="#555555"),
+        {"type": "separator", "margin": "md"},
+        tc("対象修理品", weight="bold", color="#6A1B9A"),
+        tc(make_repair_item_text(record)),
+        info_box("お問い合わせ送り状番号", getvalue(record, "okurijobango", "") or "未入力", "#6A1B9A", "#FAF2FF")
+    ]
     return make_card("🚚 修理品を発送しました", record_id, "#6A1B9A", "#F3E5F5", body)
 
 
@@ -407,13 +514,23 @@ def build_cancel_done_flex_message(record, action_label):
         title, color, bg, status = "🚚 返送で承りました", "#6A1B9A", "#FAF2FF", STATUS_CANCEL_RETURN
     else:
         title, color, bg, status = "🏬 店舗引取で承りました", "#1565C0", "#F2F8FF", STATUS_CANCEL_STORE
-    body = [tc(f"{getvalue(record, 'customer_name', '') or 'お客様'} 様", "md", "bold"), tc("対応内容を登録しました。", color="#555555"), {"type": "separator", "margin": "md"}, tc("対象修理品", weight="bold", color=color), tc(make_repair_item_text(record)), info_box("現在の状態", status, color, bg)]
+    body = [
+        tc(f"{getvalue(record, 'customer_name', '') or 'お客様'} 様", "md", "bold"),
+        tc("対応内容を登録しました。", color="#555555"),
+        {"type": "separator", "margin": "md"},
+        tc("対象修理品", weight="bold", color=color),
+        tc(make_repair_item_text(record)),
+        info_box("現在の状態", status, color, bg)
+    ]
     return make_card(title, record_id, color, "#FFFFFF", body, alt=f"{action_label}で承りました")
 
 
 def build_notify_quick_replies(record_id, status):
     if status == STATUS_ESTIMATE or "見積" in status:
-        return [quick_reply_postback("修理する", f"action=repair&recordid={record_id}", "修理する"), quick_reply_postback("キャンセル", f"action=cancel&recordid={record_id}", "キャンセル")]
+        return [
+            quick_reply_postback("修理する", f"action=repair&recordid={record_id}", "修理する"),
+            quick_reply_postback("キャンセル", f"action=cancel&recordid={record_id}", "キャンセル")
+        ]
     return []
 
 
@@ -432,8 +549,10 @@ def submit():
     data = request.get_json(force=True)
     lineuserid = data.get("lineuserid", "")
     name = data.get("name", "")
-    uketorihouhou = data.get("uketorihouhou", "")
+    raw_uketorihouhou = data.get("uketorihouhou", "")
+    uketorihouhou = normalize_uketorihouhou_for_kintone(raw_uketorihouhou)
     notify_url = f"{PUBLIC_BASE_URL}/notify?user={lineuserid}"
+
     record = {
         "lineid": make_field(lineuserid),
         "customer_name": make_field(name),
@@ -456,16 +575,20 @@ def submit():
         "notifyurl": make_field(notify_url),
         "ドロップダウン": make_field(STATUS_RECEIVED)
     }
+
     res = add_kintone_record(record)
     if not res.ok:
         return res.text, 500
+
     record_id = res.json().get("id", "")
     receipt_card = build_receipt_flex_message(record_id, name)
-    if uketorihouhou == "集荷依頼・LINEで位置情報を送る":
+
+    if raw_uketorihouhou == "集荷依頼・LINEで位置情報を送る":
         pickup_card = build_pickup_location_request_flex_message(record_id, name)
         send_line_push_messages(lineuserid, [receipt_card, pickup_card])
     else:
         send_line_push_messages(lineuserid, [receipt_card])
+
     return "OK", 200
 
 
