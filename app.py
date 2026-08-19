@@ -570,7 +570,7 @@ def build_received_notify_card(record):
             "確認・準備が整い次第、次のご案内をお送りいたしますので少々お待ちください。"
         ], "#F3FFF7")
     ]
-    return make_card("修理のお申込みを受け付けました", record_id, "#06C755", "#E8F5E9", body, alt="修理のお申込みを受け付けました")
+    return make_card("✅ 修理のお申込みを受け付けました", record_id, "#06C755", "#E8F5E9", body, alt="修理のお申込みを受け付けました")
 
 
 def build_pickup_requested_notify_card(record):
@@ -581,7 +581,7 @@ def build_pickup_requested_notify_card(record):
             "指定の日時に配送業者が伺いますので、修理品のご準備をお願いいたします。"
         ], "#F2F8FF")
     ]
-    return make_card("修理品の集荷手配が完了しました", record_id, "#1976D2", "#E3F2FD", body, alt="修理品の集荷手配が完了しました")
+    return make_card("🚚 修理品の集荷手配が完了しました", record_id, "#1976D2", "#E3F2FD", body, alt="修理品の集荷手配が完了しました")
 
 
 def build_estimate_flex_message(record):
@@ -604,7 +604,7 @@ def build_estimate_flex_message(record):
         {"type": "button", "style": "primary", "height": "sm", "color": "#06C755", "action": {"type": "postback", "label": "修理する", "data": f"action=repair&recordid={record_id}", "displayText": "修理する"}},
         {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "キャンセルする", "data": f"action=cancel&recordid={record_id}", "displayText": "キャンセルする"}}
     ]
-    return make_card("修理のお見積りが届きました", record_id, "#06C755", "#E8F5E9", body, footer, "修理のお見積りが届きました")
+    return make_card("📄 修理のお見積りが届きました", record_id, "#06C755", "#E8F5E9", body, footer, "修理のお見積りが届きました")
 
 
 def build_ordered_notify_card(record):
@@ -622,7 +622,7 @@ def build_ordered_notify_card(record):
             "受付時間：7:00〜19:00"
         ], "#FFFDF2")
     ]
-    return make_card("修理作業を開始いたします", record_id, "#06C755", "#E8F5E9", body, alt="修理作業を開始いたします")
+    return make_card("📦 修理作業を開始いたします", record_id, "#06C755", "#E8F5E9", body, alt="修理作業を開始いたします")
 
 
 def build_done_store_notify_card(record):
@@ -635,7 +635,7 @@ def build_done_store_notify_card(record):
             "ご来店の際は、本LINE画面または受付番号をスタッフへご提示ください。"
         ], "#F2F8FF")
     ]
-    return make_card("修理が完了いたしました", record_id, "#1976D2", "#E3F2FD", body, alt="修理が完了いたしました")
+    return make_card("✅ 修理が完了いたしました", record_id, "#1976D2", "#E3F2FD", body, alt="修理が完了いたしました")
 
 
 def build_done_ship_notify_card(record):
@@ -648,13 +648,13 @@ def build_done_ship_notify_card(record):
             "この度は修理サービスをご利用いただき、誠にありがとうございました。"
         ], "#FAF2FF")
     ]
-    return make_card("修理が完了いたしました", record_id, "#6A1B9A", "#F3E5F5", body, alt="修理が完了いたしました")
+    return make_card("🚚 修理が完了いたしました", record_id, "#6A1B9A", "#F3E5F5", body, alt="修理が完了いたしました")
 
 
 def build_complete_notify_card(record):
     record_id = record_id_text(record)
     body = [paragraph_box(["この修理は完了済となっております。"], "#F3FFF7")]
-    return make_card("この修理は完了済です", record_id, "#06C755", "#E8F5E9", body, alt="この修理は完了済です")
+    return make_card("🟢 この修理は完了済です", record_id, "#06C755", "#E8F5E9", body, alt="この修理は完了済です")
 
 
 def build_cancel_generic_notify_card(record):
@@ -667,7 +667,7 @@ def build_cancel_generic_notify_card(record):
             "ご指定いただいた内容に基づき、手続きを進めさせていただきます。"
         ], "#FFF5F5")
     ]
-    return make_card("修理中止のお手続きについて", record_id, "#D32F2F", "#FFEBEE", body, alt="修理中止のお手続きについて")
+    return make_card("🔴 修理中止のお手続きについて", record_id, "#D32F2F", "#FFEBEE", body, alt="修理中止のお手続きについて")
 
 
 def build_cancel_store_notify_card(record):
@@ -680,7 +680,7 @@ def build_cancel_store_notify_card(record):
             "ご来店を心よりお待ちしております。"
         ], "#F2F8FF")
     ]
-    return make_card("店舗にて返却のご準備が整いました", record_id, "#1565C0", "#E3F2FD", body, alt="店舗にて返却のご準備が整いました")
+    return make_card("🏬 店舗にて返却のご準備が整いました", record_id, "#1565C0", "#E3F2FD", body, alt="店舗にて返却のご準備が整いました")
 
 
 def build_cancel_return_notify_card(record):
@@ -693,7 +693,7 @@ def build_cancel_return_notify_card(record):
             "発送が完了しましたら改めてご連絡いたします。"
         ], "#FAF2FF")
     ]
-    return make_card("修理品の返送手配を行っております", record_id, "#6A1B9A", "#F3E5F5", body, alt="修理品の返送手配を行っております")
+    return make_card("🚚 修理品の返送手配を行っております", record_id, "#6A1B9A", "#F3E5F5", body, alt="修理品の返送手配を行っております")
 
 
 def build_cancel_dispose_notify_card(record):
@@ -706,14 +706,14 @@ def build_cancel_dispose_notify_card(record):
             "またのご利用を心よりお待ちしております。"
         ], "#FFF5F5")
     ]
-    return make_card("修理品の廃棄処分を承りました", record_id, "#D32F2F", "#FFEBEE", body, alt="修理品の廃棄処分を承りました")
+    return make_card("❌ 修理品の廃棄処分を承りました", record_id, "#D32F2F", "#FFEBEE", body, alt="修理品の廃棄処分を承りました")
 
 
 def build_generic_status_card(record):
     record_id = record_id_text(record)
     status = getvalue(record, "ドロップダウン", "未設定")
     body = [paragraph_box([f"現在のステータス：{status}", "詳しい内容は店舗までお問い合わせください。"], "#F7F7F7")]
-    return make_card("修理進捗状況のご案内", record_id, "#666666", "#EEEEEE", body, alt="修理進捗状況のご案内")
+    return make_card("📌 修理進捗状況のご案内", record_id, "#666666", "#EEEEEE", body, alt="修理進捗状況のご案内")
 
 
 def build_repair_accept_flex_message(record):
@@ -723,7 +723,7 @@ def build_repair_accept_flex_message(record):
         paragraph_box(["修理進行のご回答ありがとうございます。", "これより修理作業を進めます。"], "#F3FFF7"),
         info_box("現在の状態", STATUS_ORDERED, "#06C755", "#F3FFF7")
     ]
-    return make_card("修理進行を受け付けました", record_id, "#06C755", "#E8F5E9", body)
+    return make_card("✅ 修理進行を受け付けました", record_id, "#06C755", "#E8F5E9", body)
 
 
 def build_cancel_action_flex_message(record):
@@ -737,7 +737,7 @@ def build_cancel_action_flex_message(record):
         {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "返送", "data": f"action=cancel_return&recordid={record_id}", "displayText": "返送"}},
         {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "処分", "data": f"action=cancel_dispose&recordid={record_id}", "displayText": "処分"}}
     ]
-    return make_card("キャンセルを受け付けました", record_id, "#D32F2F", "#FFEBEE", body, footer, "キャンセル後の対応を選択してください")
+    return make_card("❌ キャンセルを受け付けました", record_id, "#D32F2F", "#FFEBEE", body, footer, "キャンセル後の対応を選択してください")
 
 
 def build_cancel_done_flex_message(record, action_label):
