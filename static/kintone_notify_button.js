@@ -1,174 +1,268 @@
 (function () {
     "use strict";
 
-    const NOTIFY_BASE_URL = "https://line-kintone-app.onrender.com/notify";
+    const BASE_URL = "https://line-kintone-app.onrender.com";
+    const BUTTON_ID = "line-notify-simple-button";
+    const MODAL_ID = "line-notify-confirm-modal";
 
-    const EVENTS = [
-        "app.record.detail.show",
-        "mobile.app.record.detail.show"
+    const SHOW_EVENTS = [
+        "app.record.detail.show"
     ];
 
-    kintone.events.on(EVENTS, function (event) {
-        const record = event.record;
+    function createButton(event) {
+        const headerSpace = kintone.app.record.getHeaderMenuSpaceElement();
 
-        // 二重表示防止
-        if (document.getElementById("lineNotifyButtonArea")) {
+        if (!headerSpace) {
             return event;
         }
 
-        const recordId = event.recordId;
-        const lineId = record.lineid && record.lineid.value ? record.lineid.value : "";
-        const status = record["ドロップダウン"] && record["ドロップダウン"].value ? record["ドロップダウン"].value : "";
-        const customerName = record.customer_name && record.customer_name.value ? record.customer_name.value : "";
-        const lastNotify = record.lastnotify && record.lastnotify.value ? record.lastnotify.value : "";
-
-        const buttonArea = document.createElement("div");
-        buttonArea.id = "lineNotifyButtonArea";
-        buttonArea.style.display = "flex";
-        buttonArea.style.alignItems = "center";
-        buttonArea.style.gap = "10px";
-        buttonArea.style.margin = "0 0 12px 0";
+        if (document.getElementById(BUTTON_ID)) {
+            return event;
+        }
 
         const button = document.createElement("button");
-        button.id = "lineNotifyButton";
-        button.textContent = "📩 LINE通知を送信";
-        button.style.background = "#06c755";
+        button.id = BUTTON_ID;
+        button.textContent = "LINE通知を送信";
+        button.type = "button";
+        button.style.backgroundColor = "#06C755";
         button.style.color = "#ffffff";
         button.style.border = "none";
         button.style.borderRadius = "8px";
-        button.style.padding = "10px 16px";
+        button.style.padding = "10px 18px";
         button.style.fontSize = "15px";
-        button.style.fontWeight = "bold";
+        button.style.fontWeight = "700";
         button.style.cursor = "pointer";
-        button.style.boxShadow = "0 2px 6px rgba(0,0,0,0.18)";
+        button.style.marginLeft = "8px";
 
-        const statusText = document.createElement("span");
-        statusText.id = "lineNotifyStatus";
-        statusText.style.fontSize = "13px";
-        statusText.style.color = "#666";
+        button.onclick = function () {
+            const recordId = kintone.app.record.getId();
 
-        if (!lineId) {
-            button.disabled = true;
-            button.style.background = "#999";
-            button.style.cursor = "not-allowed";
-            statusText.textContent = "LINE IDがないため通知できません";
-        } else {
-            if (lastNotify) {
-                statusText.textContent = "前回通知あり / 現在の進捗：" + (status || "未設定");
-            } else {
-                statusText.textContent = "未通知 / 現在の進捗：" + (status || "未設定");
-            }
-        }
-
-        button.addEventListener("mouseover", function () {
-            if (!button.disabled) {
-                button.style.background = "#04a846";
-            }
-        });
-
-        button.addEventListener("mouseout", function () {
-            if (!button.disabled) {
-                button.style.background = "#06c755";
-            }
-        });
-
-        button.addEventListener("click", function () {
-            if (!lineId) {
-                alert("LINE IDがありません。通知できません。");
-                return;
-            }
-
-            const confirmMessage =
-                "この内容でLINE通知を送信しますか？\n\n" +
-                "お客様名：" + (customerName || "未入力") + "\n" +
-                "進捗状況：" + (status || "未設定") + "\n" +
-                "レコード番号：" + recordId + "\n\n" +
-                "※前回と同じ内容の場合は、LINE送信せず「通知済み」と表示されます。\n" +
-                "※見積金額や見積内容などが変わっていれば、再送信されます。";
-
-            if (!window.confirm(confirmMessage)) {
-                return;
-            }
-
-            button.disabled = true;
-            button.textContent = "確認中...";
-            button.style.background = "#999";
-            statusText.textContent = "LINE通知内容を確認しています...";
-
-            // notifyurlフィールドではなく、今開いているレコードIDを指定する
-            const notifyUrl = NOTIFY_BASE_URL + "?recordid=" + encodeURIComponent(recordId);
-
-            fetch(notifyUrl, {
-                method: "GET",
-                mode: "cors"
-            })
-                .then(function (response) {
-                    return response.text().then(function (text) {
-                        return {
-                            ok: response.ok,
-                            status: response.status,
-                            text: text
-                        };
-                    });
-                })
-                .then(function (result) {
-                    if (!result.ok) {
-                        throw new Error("HTTP " + result.status + " : " + result.text);
-                    }
-
-                    if (result.text.indexOf("既に同じ内容を通知済み") !== -1) {
-                        button.textContent = "通知済み";
-                        button.style.background = "#607d8b";
-                        statusText.textContent = "既に同じ内容を通知済みです";
-
-                        alert("既に同じ内容を通知済みです。\n\n見積金額や見積内容などを変更すると、再度送信できます。");
-                        return;
-                    }
-
-                    if (result.text.indexOf("送信完了") !== -1) {
-                        button.textContent = "✅ 送信済み";
-                        button.style.background = "#2e7d32";
-                        statusText.textContent = "LINE通知を送信しました";
-
-                        alert("LINE通知を送信しました。");
-                        return;
-                    }
-
-                    // その他の200レスポンス
-                    button.textContent = "完了";
-                    button.style.background = "#2e7d32";
-                    statusText.textContent = result.text || "処理が完了しました";
-
-                    alert(result.text || "処理が完了しました。");
-                })
-                .catch(function (error) {
-                    console.error("LINE通知送信エラー:", error);
-
-                    button.disabled = false;
-                    button.textContent = "📩 LINE通知を送信";
-                    button.style.background = "#06c755";
-                    statusText.textContent = "送信に失敗しました";
-
-                    alert("LINE通知の送信に失敗しました。\n\n" + error);
+            if (!recordId) {
+                showMessageModal({
+                    title: "送信できません",
+                    message: "レコード番号を確認できませんでした。",
+                    type: "error"
                 });
-        });
-
-        buttonArea.appendChild(button);
-        buttonArea.appendChild(statusText);
-
-        const headerSpace = kintone.app.record.getHeaderMenuSpaceElement
-            ? kintone.app.record.getHeaderMenuSpaceElement()
-            : null;
-
-        if (headerSpace) {
-            headerSpace.appendChild(buttonArea);
-        } else {
-            const fallback = document.querySelector(".gaia-argoui-app-show-toolbar");
-            if (fallback) {
-                fallback.appendChild(buttonArea);
+                return;
             }
-        }
 
+            showConfirmModal(recordId, button);
+        };
+
+        headerSpace.appendChild(button);
         return event;
-    });
+    }
+
+    function showConfirmModal(recordId, button) {
+        removeModal();
+
+        const overlay = document.createElement("div");
+        overlay.id = MODAL_ID;
+        overlay.style.position = "fixed";
+        overlay.style.top = "0";
+        overlay.style.left = "0";
+        overlay.style.width = "100%";
+        overlay.style.height = "100%";
+        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.45)";
+        overlay.style.zIndex = "99999";
+        overlay.style.display = "flex";
+        overlay.style.alignItems = "center";
+        overlay.style.justifyContent = "center";
+        overlay.style.padding = "20px";
+
+        const box = document.createElement("div");
+        box.style.backgroundColor = "#ffffff";
+        box.style.borderRadius = "18px";
+        box.style.padding = "32px 28px";
+        box.style.maxWidth = "520px";
+        box.style.width = "100%";
+        box.style.boxShadow = "0 14px 40px rgba(0,0,0,0.25)";
+        box.style.textAlign = "center";
+
+        const title = document.createElement("div");
+        title.textContent = "本当に送信しますか？";
+        title.style.fontSize = "32px";
+        title.style.fontWeight = "800";
+        title.style.color = "#222222";
+        title.style.lineHeight = "1.4";
+        title.style.marginBottom = "28px";
+
+        const buttonRow = document.createElement("div");
+        buttonRow.style.display = "flex";
+        buttonRow.style.gap = "14px";
+        buttonRow.style.justifyContent = "center";
+
+        const cancelButton = document.createElement("button");
+        cancelButton.type = "button";
+        cancelButton.textContent = "キャンセル";
+        cancelButton.style.flex = "1";
+        cancelButton.style.padding = "16px";
+        cancelButton.style.borderRadius = "12px";
+        cancelButton.style.border = "1px solid #cccccc";
+        cancelButton.style.backgroundColor = "#ffffff";
+        cancelButton.style.color = "#333333";
+        cancelButton.style.fontSize = "18px";
+        cancelButton.style.fontWeight = "700";
+        cancelButton.style.cursor = "pointer";
+        cancelButton.onclick = removeModal;
+
+        const sendButton = document.createElement("button");
+        sendButton.type = "button";
+        sendButton.textContent = "送信する";
+        sendButton.style.flex = "1";
+        sendButton.style.padding = "16px";
+        sendButton.style.borderRadius = "12px";
+        sendButton.style.border = "none";
+        sendButton.style.backgroundColor = "#06C755";
+        sendButton.style.color = "#ffffff";
+        sendButton.style.fontSize = "18px";
+        sendButton.style.fontWeight = "800";
+        sendButton.style.cursor = "pointer";
+        sendButton.onclick = function () {
+            removeModal();
+            sendNotify(recordId, button);
+        };
+
+        buttonRow.appendChild(cancelButton);
+        buttonRow.appendChild(sendButton);
+        box.appendChild(title);
+        box.appendChild(buttonRow);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+    }
+
+    function showMessageModal(options) {
+        removeModal();
+
+        const overlay = document.createElement("div");
+        overlay.id = MODAL_ID;
+        overlay.style.position = "fixed";
+        overlay.style.top = "0";
+        overlay.style.left = "0";
+        overlay.style.width = "100%";
+        overlay.style.height = "100%";
+        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.45)";
+        overlay.style.zIndex = "99999";
+        overlay.style.display = "flex";
+        overlay.style.alignItems = "center";
+        overlay.style.justifyContent = "center";
+        overlay.style.padding = "20px";
+
+        const box = document.createElement("div");
+        box.style.backgroundColor = "#ffffff";
+        box.style.borderRadius = "18px";
+        box.style.padding = "30px 26px";
+        box.style.maxWidth = "560px";
+        box.style.width = "100%";
+        box.style.boxShadow = "0 14px 40px rgba(0,0,0,0.25)";
+        box.style.textAlign = "center";
+
+        const title = document.createElement("div");
+        title.textContent = options.title || "通知結果";
+        title.style.fontSize = "26px";
+        title.style.fontWeight = "800";
+        title.style.lineHeight = "1.4";
+        title.style.marginBottom = "16px";
+        title.style.color = options.type === "error" ? "#D32F2F" : "#06C755";
+
+        const message = document.createElement("div");
+        message.textContent = options.message || "";
+        message.style.fontSize = "22px";
+        message.style.fontWeight = "700";
+        message.style.lineHeight = "1.65";
+        message.style.color = "#222222";
+        message.style.marginBottom = "24px";
+
+        const closeButton = document.createElement("button");
+        closeButton.type = "button";
+        closeButton.textContent = "閉じる";
+        closeButton.style.width = "100%";
+        closeButton.style.padding = "15px";
+        closeButton.style.borderRadius = "12px";
+        closeButton.style.border = "none";
+        closeButton.style.backgroundColor = options.type === "error" ? "#D32F2F" : "#06C755";
+        closeButton.style.color = "#ffffff";
+        closeButton.style.fontSize = "18px";
+        closeButton.style.fontWeight = "800";
+        closeButton.style.cursor = "pointer";
+        closeButton.onclick = removeModal;
+
+        box.appendChild(title);
+        box.appendChild(message);
+        box.appendChild(closeButton);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+    }
+
+    function removeModal() {
+        const current = document.getElementById(MODAL_ID);
+        if (current) {
+            current.remove();
+        }
+    }
+
+    function sendNotify(recordId, button) {
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = "送信中...";
+        button.style.opacity = "0.65";
+        button.style.cursor = "not-allowed";
+
+        fetch(BASE_URL + "/notify?recordid=" + encodeURIComponent(recordId), {
+            method: "GET"
+        })
+            .then(function (response) {
+                return response.text().then(function (text) {
+                    return {
+                        ok: response.ok,
+                        status: response.status,
+                        text: text
+                    };
+                });
+            })
+            .then(function (result) {
+                if (!result.ok) {
+                    showMessageModal({
+                        title: "送信できませんでした",
+                        message: result.text || "通知送信中にエラーが発生しました。",
+                        type: "error"
+                    });
+                    return;
+                }
+
+                if (
+                    result.text.indexOf("既に同じ内容") !== -1 ||
+                    result.text.indexOf("重複") !== -1 ||
+                    result.text.indexOf("同じ内容") !== -1
+                ) {
+                    showMessageModal({
+                        title: "送信できません",
+                        message: "同じ内容なので送信できません。何か内容を変えたら送れます。",
+                        type: "error"
+                    });
+                    return;
+                }
+
+                showMessageModal({
+                    title: "送信しました",
+                    message: "LINE通知を送信しました。",
+                    type: "success"
+                });
+            })
+            .catch(function (error) {
+                showMessageModal({
+                    title: "送信できませんでした",
+                    message: String(error),
+                    type: "error"
+                });
+            })
+            .finally(function () {
+                button.disabled = false;
+                button.textContent = originalText;
+                button.style.opacity = "1";
+                button.style.cursor = "pointer";
+            });
+    }
+
+    kintone.events.on(SHOW_EVENTS, createButton);
 })();
