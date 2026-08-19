@@ -52,10 +52,6 @@ OLD_STATUS_CANCEL_DISPOSE = "❌中止(処分)"
 JST = timezone(timedelta(hours=9))
 
 
-# =========================
-# 共通ヘルパー
-# =========================
-
 def now_utc_for_kintone():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -65,24 +61,15 @@ def today_jst_for_kintone_date():
 
 
 def kintone_headers():
-    return {
-        "X-Cybozu-API-Token": KINTONE_API_TOKEN,
-        "Content-Type": "application/json"
-    }
+    return {"X-Cybozu-API-Token": KINTONE_API_TOKEN, "Content-Type": "application/json"}
 
 
 def customer_kintone_headers():
-    return {
-        "X-Cybozu-API-Token": CUSTOMER_KINTONE_API_TOKEN,
-        "Content-Type": "application/json"
-    }
+    return {"X-Cybozu-API-Token": CUSTOMER_KINTONE_API_TOKEN, "Content-Type": "application/json"}
 
 
 def line_headers():
-    return {
-        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
-        "Content-Type": "application/json"
-    }
+    return {"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}", "Content-Type": "application/json"}
 
 
 def getvalue(record, field_code, default=""):
@@ -109,8 +96,7 @@ def record_id_text(record):
 
 
 def customer_display_name(record):
-    name = getvalue(record, "customer_name", "")
-    return name if name else "お客様"
+    return getvalue(record, "customer_name", "") or "お客様"
 
 
 def format_yen(value):
@@ -126,20 +112,6 @@ def shorten_text(value, limit=80):
     if not value:
         return "未入力"
     return value[:limit] + "..." if len(value) > limit else value
-
-
-def make_repair_item_text(record):
-    maker = getvalue(record, "maker", "")
-    model = getvalue(record, "model", "")
-    serial = getvalue(record, "serial", "")
-    parts = []
-    if maker:
-        parts.append(maker)
-    if model:
-        parts.append(model)
-    if serial:
-        parts.append(f"機番:{serial}")
-    return " / ".join(parts) if parts else "修理品情報 未入力"
 
 
 def normalize_uketorihouhou_for_kintone(raw_uketorihouhou):
@@ -163,14 +135,7 @@ def is_complete_status(status):
 
 
 def is_cancel_status(status):
-    return status in [
-        STATUS_CANCEL_GENERIC,
-        STATUS_CANCEL_STORE,
-        STATUS_CANCEL_RETURN,
-        STATUS_CANCEL_DISPOSE,
-        OLD_STATUS_CANCEL_RETURN,
-        OLD_STATUS_CANCEL_DISPOSE
-    ] or "中止" in status
+    return status in [STATUS_CANCEL_GENERIC, STATUS_CANCEL_STORE, STATUS_CANCEL_RETURN, STATUS_CANCEL_DISPOSE, OLD_STATUS_CANCEL_RETURN, OLD_STATUS_CANCEL_DISPOSE] or "中止" in status
 
 
 def post_json(url, payload, headers):
@@ -196,15 +161,6 @@ def send_line_reply_messages(reply_token, messages):
     return res
 
 
-def send_line_push(user_id, text, quick_reply_items=None):
-    message = {"type": "text", "text": text}
-    if quick_reply_items:
-        message["quickReply"] = {"items": quick_reply_items}
-    res = post_json(LINE_PUSH_URL, {"to": user_id, "messages": [message]}, line_headers())
-    print("LINE送信:", res.text)
-    return res
-
-
 def send_line_push_messages(user_id, messages):
     res = post_json(LINE_PUSH_URL, {"to": user_id, "messages": messages}, line_headers())
     print("LINE複数送信:", res.text)
@@ -223,7 +179,7 @@ def quick_reply_postback(label, data, display_text=None):
 
 
 # =========================
-# Kintone 修理管理アプリ操作
+# Kintone操作
 # =========================
 
 def add_kintone_record(record):
@@ -233,11 +189,7 @@ def add_kintone_record(record):
 
 
 def get_kintone_record(record_id):
-    res = requests.get(
-        KINTONE_RECORD_URL,
-        headers={"X-Cybozu-API-Token": KINTONE_API_TOKEN},
-        params={"app": KINTONE_APP_ID, "id": record_id}
-    )
+    res = requests.get(KINTONE_RECORD_URL, headers={"X-Cybozu-API-Token": KINTONE_API_TOKEN}, params={"app": KINTONE_APP_ID, "id": record_id})
     print("単体取得ステータス:", res.status_code)
     print("単体取得本文:", res.text)
     return res.json().get("record") if res.ok else None
@@ -246,28 +198,20 @@ def get_kintone_record(record_id):
 def get_records_by_lineid(line_user_id, limit=10):
     safe_user_id = escape_kintone_query_value(line_user_id)
     query = f'lineid = "{safe_user_id}" order by $id desc limit {limit}'
-    res = requests.get(
-        KINTONE_RECORDS_URL,
-        headers={"X-Cybozu-API-Token": KINTONE_API_TOKEN},
-        params={"app": KINTONE_APP_ID, "query": query}
-    )
+    res = requests.get(KINTONE_RECORDS_URL, headers={"X-Cybozu-API-Token": KINTONE_API_TOKEN}, params={"app": KINTONE_APP_ID, "query": query})
     print("複数取得ステータス:", res.status_code)
     print("複数取得本文:", res.text)
     return res.json().get("records", []) if res.ok else []
 
 
 def update_kintone_record(record_id, fields):
-    res = requests.put(
-        KINTONE_RECORD_URL,
-        headers=kintone_headers(),
-        data=json.dumps({"app": KINTONE_APP_ID, "id": record_id, "record": fields}, ensure_ascii=False).encode("utf-8")
-    )
+    res = requests.put(KINTONE_RECORD_URL, headers=kintone_headers(), data=json.dumps({"app": KINTONE_APP_ID, "id": record_id, "record": fields}, ensure_ascii=False).encode("utf-8"))
     print("Kintone更新:", res.text)
     return res
 
 
 # =========================
-# Kintone 顧客リストアプリ操作
+# 顧客リスト連携
 # =========================
 
 def customer_api_enabled():
@@ -288,11 +232,7 @@ def get_customer_record_by_lineid_or_phone(lineid, phone):
     if not query_parts:
         return None
     query = " or ".join(query_parts) + " order by $id desc limit 1"
-    res = requests.get(
-        KINTONE_RECORDS_URL,
-        headers={"X-Cybozu-API-Token": CUSTOMER_KINTONE_API_TOKEN},
-        params={"app": CUSTOMER_KINTONE_APP_ID, "query": query}
-    )
+    res = requests.get(KINTONE_RECORDS_URL, headers={"X-Cybozu-API-Token": CUSTOMER_KINTONE_API_TOKEN}, params={"app": CUSTOMER_KINTONE_APP_ID, "query": query})
     print("顧客リスト検索ステータス:", res.status_code)
     print("顧客リスト検索本文:", res.text)
     if not res.ok:
@@ -332,11 +272,7 @@ def update_customer_record(customer_record, lineid, name, phone):
         "last_accept_date": make_field(today_jst_for_kintone_date()),
         "accept_count": make_field(next_count)
     }
-    res = requests.put(
-        KINTONE_RECORD_URL,
-        headers=customer_kintone_headers(),
-        data=json.dumps({"app": CUSTOMER_KINTONE_APP_ID, "id": customer_record_id, "record": fields}, ensure_ascii=False).encode("utf-8")
-    )
+    res = requests.put(KINTONE_RECORD_URL, headers=customer_kintone_headers(), data=json.dumps({"app": CUSTOMER_KINTONE_APP_ID, "id": customer_record_id, "record": fields}, ensure_ascii=False).encode("utf-8"))
     print("顧客リスト更新:", res.text)
     return res
 
@@ -355,7 +291,7 @@ def upsert_customer_record(lineid, name, phone):
 
 
 # =========================
-# 修理住所更新
+# 更新処理
 # =========================
 
 def update_location_pickup(record_id, address, latitude, longitude):
@@ -394,10 +330,7 @@ def update_location_return(record_id, address, latitude, longitude):
 
 
 def update_notify_history(record_id, message):
-    return update_kintone_record(record_id, {
-        "lastnotify": make_field(now_utc_for_kintone()),
-        "notifymessage": make_field(message)
-    })
+    return update_kintone_record(record_id, {"lastnotify": make_field(now_utc_for_kintone()), "notifymessage": make_field(message)})
 
 
 def update_repair_answer(record_id, answer):
@@ -409,10 +342,7 @@ def update_repair_answer(record_id, answer):
 
 def update_cancel_action(record_id, action):
     status = STATUS_CANCEL_DISPOSE if action == "処分" else STATUS_CANCEL_RETURN if action == "返送" else STATUS_CANCEL_STORE
-    return update_kintone_record(record_id, {
-        "canceltaio": make_field(action),
-        "ドロップダウン": make_field(status)
-    })
+    return update_kintone_record(record_id, {"canceltaio": make_field(action), "ドロップダウン": make_field(status)})
 
 
 def already_decided_text(current_answer, current_cancel_action):
@@ -426,7 +356,62 @@ def already_decided_text(current_answer, current_cancel_action):
 
 
 # =========================
-# 通知文面
+# Flex Message 共通
+# =========================
+
+def tc(text, size="sm", weight=None, color=None, margin=None):
+    item = {"type": "text", "text": text, "size": size, "wrap": True}
+    if weight:
+        item["weight"] = weight
+    if color:
+        item["color"] = color
+    if margin:
+        item["margin"] = margin
+    return item
+
+
+def name_line(record):
+    return tc(f"{customer_display_name(record)} 様", "md", "bold", "#222222")
+
+
+def paragraph_box(lines, bg="#FFFFFF", color="#333333"):
+    contents = []
+    for line in lines:
+        if line:
+            contents.append(tc(line, size="sm", color=color, margin="sm" if contents else None))
+    return {"type": "box", "layout": "vertical", "backgroundColor": bg, "cornerRadius": "12px", "paddingAll": "14px", "contents": contents}
+
+
+def info_box(title, value, color, bg):
+    return {"type": "box", "layout": "vertical", "backgroundColor": bg, "cornerRadius": "12px", "paddingAll": "14px", "margin": "md", "contents": [tc(title, "sm", "bold", color), tc(value, "lg", "bold", None, "sm")]}
+
+
+def make_card(title, record_id, color, sub_color, body, footer=None, alt=None, quick=None):
+    msg = {
+        "type": "flex",
+        "altText": alt or title,
+        "contents": {
+            "type": "bubble",
+            "size": "mega",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": color,
+                "paddingAll": "16px",
+                "contents": [tc(title, "lg", "bold", "#FFFFFF"), tc(f"受付番号：{record_id}", "sm", None, sub_color, "sm")]
+            },
+            "body": {"type": "box", "layout": "vertical", "spacing": "md", "contents": body}
+        }
+    }
+    if footer:
+        msg["contents"]["footer"] = {"type": "box", "layout": "vertical", "spacing": "sm", "contents": footer}
+    if quick:
+        msg["quickReply"] = {"items": quick}
+    return msg
+
+
+# =========================
+# Kintoneからの通知カード
 # =========================
 
 def build_notify_message(record):
@@ -456,7 +441,6 @@ def build_notify_message(record):
         return f"受付番号{rid}\n{name}様\n修理品の返送手配を行っております\n修理中止のご連絡を承りました。\nお預かりしております修理品は、順次発送手配を進めております。\n商品は着払いでのご返送となりますので、到着時に配送業者へ送料のお支払いをお願いいたします。発送が完了しましたら改めてご連絡いたします。"
     if status == STATUS_CANCEL_DISPOSE:
         return f"受付番号{rid}\n{name}様\n修理品の廃棄処分を承りました\n修理中止および廃棄処分のご了承をいただき、ありがとうございます。\nお預かりしております修理品につきましては、当店にて責任を持って適切に処分させていただきます。\nこれにてお手続きは完了となります。またのご利用を心よりお待ちしております。"
-
     return build_status_text(record)
 
 
@@ -499,77 +483,6 @@ def build_status_text(record):
     return text
 
 
-# =========================
-# Flex Message
-# =========================
-
-def tc(text, size="sm", weight=None, color=None, margin=None):
-    item = {"type": "text", "text": text, "size": size, "wrap": True}
-    if weight:
-        item["weight"] = weight
-    if color:
-        item["color"] = color
-    if margin:
-        item["margin"] = margin
-    return item
-
-
-def name_line(record):
-    return tc(f"{customer_display_name(record)} 様", "md", "bold", "#222222")
-
-
-def paragraph_box(lines, bg="#FFFFFF", color="#333333"):
-    contents = []
-    for line in lines:
-        if not line:
-            continue
-        contents.append(tc(line, size="sm", color=color, margin="sm" if contents else None))
-    return {
-        "type": "box",
-        "layout": "vertical",
-        "backgroundColor": bg,
-        "cornerRadius": "12px",
-        "paddingAll": "14px",
-        "contents": contents
-    }
-
-
-def info_box(title, value, color, bg):
-    return {
-        "type": "box",
-        "layout": "vertical",
-        "backgroundColor": bg,
-        "cornerRadius": "12px",
-        "paddingAll": "14px",
-        "margin": "md",
-        "contents": [tc(title, "sm", "bold", color), tc(value, "lg", "bold", None, "sm")]
-    }
-
-
-def make_card(title, record_id, color, sub_color, body, footer=None, alt=None, quick=None):
-    msg = {
-        "type": "flex",
-        "altText": alt or title,
-        "contents": {
-            "type": "bubble",
-            "size": "mega",
-            "header": {
-                "type": "box",
-                "layout": "vertical",
-                "backgroundColor": color,
-                "paddingAll": "16px",
-                "contents": [tc(title, "lg", "bold", "#FFFFFF"), tc(f"受付番号：{record_id}", "sm", None, sub_color, "sm")]
-            },
-            "body": {"type": "box", "layout": "vertical", "spacing": "md", "contents": body}
-        }
-    }
-    if footer:
-        msg["contents"]["footer"] = {"type": "box", "layout": "vertical", "spacing": "sm", "contents": footer}
-    if quick:
-        msg["quickReply"] = {"items": quick}
-    return msg
-
-
 def build_notify_flex_message(record):
     status = getvalue(record, "ドロップダウン", "")
     if status == STATUS_RECEIVED:
@@ -599,19 +512,13 @@ def build_notify_flex_message(record):
 
 def build_received_notify_card(record):
     rid = record_id_text(record)
-    body = [
-        name_line(record),
-        paragraph_box(["お申し込みありがとうございます。", "ただいま内容を確認しております。", "確認・準備が整い次第、次のご案内をお送りいたしますので少々お待ちください。"], "#F3FFF7")
-    ]
+    body = [name_line(record), paragraph_box(["お申し込みありがとうございます。", "ただいま内容を確認しております。", "確認・準備が整い次第、次のご案内をお送りいたしますので少々お待ちください。"], "#F3FFF7")]
     return make_card("✅ 修理のお申込みを受け付けました", rid, "#06C755", "#E8F5E9", body, alt="修理のお申込みを受け付けました")
 
 
 def build_pickup_requested_notify_card(record):
     rid = record_id_text(record)
-    body = [
-        name_line(record),
-        paragraph_box(["修理品の集荷手配が完了しました。", "指定の日時に配送業者が伺いますので、修理品のご準備をお願いいたします。"], "#F2F8FF")
-    ]
+    body = [name_line(record), paragraph_box(["修理品の集荷手配が完了しました。", "指定の日時に配送業者が伺いますので、修理品のご準備をお願いいたします。"], "#F2F8FF")]
     return make_card("🚚 修理品の集荷手配が完了しました", rid, "#1976D2", "#E3F2FD", body, alt="修理品の集荷手配が完了しました")
 
 
@@ -640,29 +547,19 @@ def build_estimate_flex_message(record):
 
 def build_ordered_notify_card(record):
     rid = record_id_text(record)
-    body = [
-        name_line(record),
-        paragraph_box(["修理実行のご連絡ありがとうございます。", "これより修理作業に入らせていただきます。", "完了まで今しばらくお待ちください。"], "#F3FFF7"),
-        paragraph_box(["【受取方法・お届け先の変更について】", "受取方法の変更や、集荷場所・発送先の変更がある場合は、店舗へお電話にてご連絡をお願いいたします。", "上中野店 TEL：086-230-6551", "受付時間：7:00〜19:00"], "#FFFDF2")
-    ]
+    body = [name_line(record), paragraph_box(["修理実行のご連絡ありがとうございます。", "これより修理作業に入らせていただきます。", "完了まで今しばらくお待ちください。"], "#F3FFF7"), paragraph_box(["【受取方法・お届け先の変更について】", "受取方法の変更や、集荷場所・発送先の変更がある場合は、店舗へお電話にてご連絡をお願いいたします。", "上中野店 TEL：086-230-6551", "受付時間：7:00〜19:00"], "#FFFDF2")]
     return make_card("📦 修理作業を開始いたします", rid, "#06C755", "#E8F5E9", body, alt="修理作業を開始いたします")
 
 
 def build_done_store_notify_card(record):
     rid = record_id_text(record)
-    body = [
-        name_line(record),
-        paragraph_box(["大変お待たせいたしました。", "修理作業が完了し、店頭にてお渡しの準備が整っております。", "お手数ですが、ご都合の良いタイミングでご来店をお願いいたします。", "ご来店の際は、本LINE画面または受付番号をスタッフへご提示ください。"], "#F2F8FF")
-    ]
+    body = [name_line(record), paragraph_box(["大変お待たせいたしました。", "修理作業が完了し、店頭にてお渡しの準備が整っております。", "お手数ですが、ご都合の良いタイミングでご来店をお願いいたします。", "ご来店の際は、本LINE画面または受付番号をスタッフへご提示ください。"], "#F2F8FF")]
     return make_card("✅ 修理が完了いたしました", rid, "#1976D2", "#E3F2FD", body, alt="修理が完了いたしました")
 
 
 def build_done_ship_notify_card(record):
     rid = record_id_text(record)
-    body = [
-        name_line(record),
-        paragraph_box(["大変お待たせいたしました。", "修理作業が完了し、修理品のお荷物発送が完了いたしました。", "到着までもうしばらくお待ちください。", "この度は修理サービスをご利用いただき、誠にありがとうございました。"], "#FAF2FF")
-    ]
+    body = [name_line(record), paragraph_box(["大変お待たせいたしました。", "修理作業が完了し、修理品のお荷物発送が完了いたしました。", "到着までもうしばらくお待ちください。", "この度は修理サービスをご利用いただき、誠にありがとうございました。"], "#FAF2FF")]
     return make_card("🚚 修理が完了いたしました", rid, "#6A1B9A", "#F3E5F5", body, alt="修理が完了いたしました")
 
 
@@ -674,37 +571,25 @@ def build_complete_notify_card(record):
 
 def build_cancel_generic_notify_card(record):
     rid = record_id_text(record)
-    body = [
-        name_line(record),
-        paragraph_box(["修理中止のご連絡を承りました。", "利用規約の通り、見積料1,500円を頂戴いたします。", "お預かりした修理品の【店舗引取・ご返送・当店にて処分】のご判断をお知らせください。", "ご指定いただいた内容に基づき、手続きを進めさせていただきます。"], "#FFF5F5")
-    ]
+    body = [name_line(record), paragraph_box(["修理中止のご連絡を承りました。", "利用規約の通り、見積料1,500円を頂戴いたします。", "お預かりした修理品の【店舗引取・ご返送・当店にて処分】のご判断をお知らせください。", "ご指定いただいた内容に基づき、手続きを進めさせていただきます。"], "#FFF5F5")]
     return make_card("🔴 修理中止のお手続きについて", rid, "#D32F2F", "#FFEBEE", body, alt="修理中止のお手続きについて")
 
 
 def build_cancel_store_notify_card(record):
     rid = record_id_text(record)
-    body = [
-        name_line(record),
-        paragraph_box(["修理中止のご連絡を承りました。", "お預かりしております修理品は、店頭にてお渡しの準備が整っております。", "ご来店の際は、本LINE画面または受付番号をスタッフへご提示ください。", "ご来店を心よりお待ちしております。"], "#F2F8FF")
-    ]
+    body = [name_line(record), paragraph_box(["修理中止のご連絡を承りました。", "お預かりしております修理品は、店頭にてお渡しの準備が整っております。", "ご来店の際は、本LINE画面または受付番号をスタッフへご提示ください。", "ご来店を心よりお待ちしております。"], "#F2F8FF")]
     return make_card("🏬 店舗にて返却のご準備が整いました", rid, "#1565C0", "#E3F2FD", body, alt="店舗にて返却のご準備が整いました")
 
 
 def build_cancel_return_notify_card(record):
     rid = record_id_text(record)
-    body = [
-        name_line(record),
-        paragraph_box(["修理中止のご連絡を承りました。", "お預かりしております修理品は、順次発送手配を進めております。", "商品は着払いでのご返送となりますので、到着時に配送業者へ送料のお支払いをお願いいたします。", "発送が完了しましたら改めてご連絡いたします。"], "#FAF2FF")
-    ]
+    body = [name_line(record), paragraph_box(["修理中止のご連絡を承りました。", "お預かりしております修理品は、順次発送手配を進めております。", "商品は着払いでのご返送となりますので、到着時に配送業者へ送料のお支払いをお願いいたします。", "発送が完了しましたら改めてご連絡いたします。"], "#FAF2FF")]
     return make_card("🚚 修理品の返送手配を行っております", rid, "#6A1B9A", "#F3E5F5", body, alt="修理品の返送手配を行っております")
 
 
 def build_cancel_dispose_notify_card(record):
     rid = record_id_text(record)
-    body = [
-        name_line(record),
-        paragraph_box(["修理中止および廃棄処分のご了承をいただき、ありがとうございます。", "お預かりしております修理品につきましては、当店にて責任を持って適切に処分させていただきます。", "これにてお手続きは完了となります。", "またのご利用を心よりお待ちしております。"], "#FFF5F5")
-    ]
+    body = [name_line(record), paragraph_box(["修理中止および廃棄処分のご了承をいただき、ありがとうございます。", "お預かりしております修理品につきましては、当店にて責任を持って適切に処分させていただきます。", "これにてお手続きは完了となります。", "またのご利用を心よりお待ちしております。"], "#FFF5F5")]
     return make_card("❌ 修理品の廃棄処分を承りました", rid, "#D32F2F", "#FFEBEE", body, alt="修理品の廃棄処分を承りました")
 
 
@@ -715,21 +600,109 @@ def build_generic_status_card(record):
     return make_card("📌 修理進捗状況のご案内", rid, "#666666", "#EEEEEE", body, alt="修理進捗状況のご案内")
 
 
-def build_pickup_location_request_flex_message(record_id, name):
-    record = {"$id": {"value": record_id}, "customer_name": {"value": name}}
+# =========================
+# 修理問い合わせカード
+# =========================
+
+def readable_cancel_status(status):
+    if status in [STATUS_CANCEL_RETURN, OLD_STATUS_CANCEL_RETURN] or "返送" in status or "返却" in status:
+        return "返送 手続き中"
+    if status in [STATUS_CANCEL_DISPOSE, OLD_STATUS_CANCEL_DISPOSE] or "処分" in status:
+        return "処分 手続き中"
+    if status == STATUS_CANCEL_STORE or "店舗引取" in status:
+        return "店舗返却 手続き中"
+    return "手続き中"
+
+
+def build_inquiry_flex_message(record):
+    rid = record_id_text(record)
+    status = getvalue(record, "ドロップダウン", "")
+    footer = None
+    color = "#06C755"
+    sub_color = "#E8F5E9"
+
+    if status == STATUS_RECEIVED:
+        readable_status = "修理受付中"
+        lines = ["お申し込みを受け付け、現在内容を確認しております。", "確認・準備が整い次第、次のご案内をお送りいたしますので少々お待ちください。"]
+        icon = "✅"
+        bg = "#F3FFF7"
+    elif status == STATUS_PICKUP_REQUESTED:
+        readable_status = "集荷手配完了"
+        lines = ["集荷の手配が完了しております。", "指定の日時に配送業者が伺いますので、修理品のご準備をお願いいたします。"]
+        icon = "🚚"
+        color = "#1976D2"
+        sub_color = "#E3F2FD"
+        bg = "#F2F8FF"
+    elif status == STATUS_ESTIMATE or "見積" in status:
+        readable_status = "お見積り提示済"
+        lines = ["修理品の状態確認が完了し、既にお見積りをご提示しております。", "進行のご判断がまだお済みでない場合は、下のボタンより「修理する」または「キャンセルする」をお知らせください。"]
+        icon = "📄"
+        bg = "#F3FFF7"
+        footer = [
+            {"type": "button", "style": "primary", "height": "sm", "color": "#06C755", "action": {"type": "postback", "label": "修理する", "data": f"action=repair&recordid={rid}", "displayText": "修理する"}},
+            {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "キャンセルする", "data": f"action=cancel&recordid={rid}", "displayText": "キャンセルする"}}
+        ]
+    elif status == STATUS_ORDERED or "受注" in status:
+        readable_status = "修理作業中"
+        lines = ["お見積りのご了承をいただき、現在、修理作業を進めております。", "完了まで今しばらくお待ちください。"]
+        icon = "📦"
+        bg = "#F3FFF7"
+    elif status == STATUS_DONE_STORE:
+        readable_status = "修理完了（店頭でお渡し可能）"
+        lines = ["修理作業が完了し、店頭にてお渡しの準備が整っております。", "ご来店の際は、本LINE画面または受付番号をスタッフへご提示ください。", "ご来店を心よりお待ちしております。"]
+        icon = "🏬"
+        color = "#1976D2"
+        sub_color = "#E3F2FD"
+        bg = "#F2F8FF"
+    elif status == STATUS_DONE_SHIP:
+        readable_status = "修理完了（発送完了済）"
+        tracking = getvalue(record, "okurijobango", "") or "未入力"
+        lines = ["修理品の発送が完了いたしました。", f"お問い合わせ送り状番号：{tracking}", "到着までもうしばらくお待ちください。"]
+        icon = "🚚"
+        color = "#6A1B9A"
+        sub_color = "#F3E5F5"
+        bg = "#FAF2FF"
+    elif status == STATUS_COMPLETE or is_complete_status(status):
+        readable_status = "完了済"
+        lines = ["この修理は完了済となっております。"]
+        icon = "🟢"
+        bg = "#F3FFF7"
+    elif is_cancel_status(status):
+        readable_status = f"修理中止（{readable_cancel_status(status)}）"
+        lines = ["本件は修理中止のお手続きを進めております。", "もうしばらくお待ちください。"]
+        icon = "🔴"
+        color = "#D32F2F"
+        sub_color = "#FFEBEE"
+        bg = "#FFF5F5"
+    else:
+        readable_status = status or "確認中"
+        lines = ["現在の状況を確認しております。", "詳しい内容は店舗までお問い合わせください。"]
+        icon = "📌"
+        color = "#666666"
+        sub_color = "#EEEEEE"
+        bg = "#F7F7F7"
+
     body = [
         name_line(record),
-        paragraph_box(["下の「📍 集荷場所を送る」ボタンを押してください。", "位置情報画面が開いたら、場所を選んで緑の✅を押してください。"], "#F2F8FF")
+        info_box("現在のステータス", readable_status, color, bg),
+        paragraph_box(lines, bg)
     ]
+    return make_card(f"{icon} 修理進捗状況のご案内", rid, color, sub_color, body, footer, "修理進捗状況のご案内")
+
+
+# =========================
+# その他カード
+# =========================
+
+def build_pickup_location_request_flex_message(record_id, name):
+    record = {"$id": {"value": record_id}, "customer_name": {"value": name}}
+    body = [name_line(record), paragraph_box(["下の「📍 集荷場所を送る」ボタンを押してください。", "位置情報画面が開いたら、場所を選んで緑の✅を押してください。"], "#F2F8FF")]
     return make_card("📍 集荷場所を登録してください", record_id, "#1976D2", "#E3F2FD", body, alt="集荷場所を送信してください", quick=[quick_reply_location("📍 集荷場所を送る")])
 
 
 def build_return_location_request_flex_message(record):
     rid = record_id_text(record)
-    body = [
-        name_line(record),
-        paragraph_box(["下の「📍 返却場所を送る」ボタンを押してください。", "位置情報画面が開いたら、場所を選んで緑の✅を押してください。"], "#FAF2FF")
-    ]
+    body = [name_line(record), paragraph_box(["下の「📍 返却場所を送る」ボタンを押してください。", "位置情報画面が開いたら、場所を選んで緑の✅を押してください。"], "#FAF2FF")]
     return make_card("📦 返却場所を登録してください", rid, "#6A1B9A", "#F3E5F5", body, alt="返却場所を送信してください", quick=[quick_reply_location("📍 返却場所を送る")])
 
 
@@ -910,7 +883,7 @@ def handle_repair_inquiry(user_id, reply_token):
         send_line_reply(reply_token, "現在、このLINEアカウントに紐づく修理受付は見つかりませんでした。")
         return
     if len(records) == 1:
-        send_line_reply(reply_token, build_status_text(records[0]))
+        send_line_reply_messages(reply_token, [build_inquiry_flex_message(records[0])])
         return
 
     text = "複数の修理受付があります。\n確認したい受付を選んでください。"
@@ -927,7 +900,7 @@ def handle_record_number_inquiry(record_number, reply_token):
     if not record:
         send_line_reply(reply_token, "指定された受付番号の修理受付が見つかりませんでした。")
         return
-    send_line_reply(reply_token, build_status_text(record))
+    send_line_reply_messages(reply_token, [build_inquiry_flex_message(record)])
 
 
 def handle_location_message(user_id, reply_token, message):
@@ -992,7 +965,7 @@ def handle_postback(user_id, reply_token, data):
     current_status = getvalue(record_before, "ドロップダウン", "")
 
     if action == "checkstatus":
-        send_line_reply(reply_token, build_status_text(record_before))
+        send_line_reply_messages(reply_token, [build_inquiry_flex_message(record_before)])
         return
 
     if action == "repair":
