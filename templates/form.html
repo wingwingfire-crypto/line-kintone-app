@@ -1,3 +1,4 @@
+<!-- version: remove-symptomother-address-only-visible-v4 2026-08-18 -->
 <!doctype html>
 <html lang="ja">
   <head>
@@ -409,12 +410,6 @@
               placeholder="故障内容を入力してください"
             />
           </div>
-          <label>補足症状 <span class="optional">任意</span></label
-          ><textarea
-            id="symptomOther"
-            name="symptomOther"
-            placeholder="症状の詳細、発生タイミングなどがあれば入力してください"
-          ></textarea>
         </div>
         <div class="card">
           <h2 class="section-title">4. 受け渡し方法</h2>
@@ -998,9 +993,6 @@
               serial: document.getElementById("serial").value.trim(),
               issue: selectedIssues.join("、"),
               issueother: document.getElementById("issueOther").value.trim(),
-              symptomother: document
-                .getElementById("symptomOther")
-                .value.trim(),
               uketorihouhou: method,
               shukajusho: document.getElementById("shukajusho").value.trim(),
               shukakiboubi: document.getElementById("shukakiboubi").value,
