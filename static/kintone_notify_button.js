@@ -63,7 +63,7 @@
         overlay.style.left = "0";
         overlay.style.width = "100%";
         overlay.style.height = "100%";
-        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.45)";
+        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.38)";
         overlay.style.zIndex = "99999";
         overlay.style.display = "flex";
         overlay.style.alignItems = "center";
@@ -72,36 +72,36 @@
 
         const box = document.createElement("div");
         box.style.backgroundColor = "#ffffff";
-        box.style.borderRadius = "18px";
-        box.style.padding = "32px 28px";
-        box.style.maxWidth = "520px";
+        box.style.borderRadius = "16px";
+        box.style.padding = "26px 24px";
+        box.style.maxWidth = "460px";
         box.style.width = "100%";
-        box.style.boxShadow = "0 14px 40px rgba(0,0,0,0.25)";
+        box.style.boxShadow = "0 12px 32px rgba(0,0,0,0.22)";
         box.style.textAlign = "center";
 
         const title = document.createElement("div");
         title.textContent = "本当に送信しますか？";
-        title.style.fontSize = "32px";
+        title.style.fontSize = "24px";
         title.style.fontWeight = "800";
         title.style.color = "#222222";
-        title.style.lineHeight = "1.4";
-        title.style.marginBottom = "28px";
+        title.style.lineHeight = "1.45";
+        title.style.marginBottom = "22px";
 
         const buttonRow = document.createElement("div");
         buttonRow.style.display = "flex";
-        buttonRow.style.gap = "14px";
+        buttonRow.style.gap = "12px";
         buttonRow.style.justifyContent = "center";
 
         const cancelButton = document.createElement("button");
         cancelButton.type = "button";
         cancelButton.textContent = "キャンセル";
         cancelButton.style.flex = "1";
-        cancelButton.style.padding = "16px";
-        cancelButton.style.borderRadius = "12px";
+        cancelButton.style.padding = "13px";
+        cancelButton.style.borderRadius = "10px";
         cancelButton.style.border = "1px solid #cccccc";
         cancelButton.style.backgroundColor = "#ffffff";
         cancelButton.style.color = "#333333";
-        cancelButton.style.fontSize = "18px";
+        cancelButton.style.fontSize = "15px";
         cancelButton.style.fontWeight = "700";
         cancelButton.style.cursor = "pointer";
         cancelButton.onclick = removeModal;
@@ -110,12 +110,12 @@
         sendButton.type = "button";
         sendButton.textContent = "送信する";
         sendButton.style.flex = "1";
-        sendButton.style.padding = "16px";
-        sendButton.style.borderRadius = "12px";
+        sendButton.style.padding = "13px";
+        sendButton.style.borderRadius = "10px";
         sendButton.style.border = "none";
         sendButton.style.backgroundColor = "#06C755";
         sendButton.style.color = "#ffffff";
-        sendButton.style.fontSize = "18px";
+        sendButton.style.fontSize = "15px";
         sendButton.style.fontWeight = "800";
         sendButton.style.cursor = "pointer";
         sendButton.onclick = function () {
@@ -141,7 +141,7 @@
         overlay.style.left = "0";
         overlay.style.width = "100%";
         overlay.style.height = "100%";
-        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.45)";
+        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.38)";
         overlay.style.zIndex = "99999";
         overlay.style.display = "flex";
         overlay.style.alignItems = "center";
@@ -150,39 +150,39 @@
 
         const box = document.createElement("div");
         box.style.backgroundColor = "#ffffff";
-        box.style.borderRadius = "18px";
-        box.style.padding = "30px 26px";
-        box.style.maxWidth = "560px";
+        box.style.borderRadius = "16px";
+        box.style.padding = "26px 24px";
+        box.style.maxWidth = "500px";
         box.style.width = "100%";
-        box.style.boxShadow = "0 14px 40px rgba(0,0,0,0.25)";
+        box.style.boxShadow = "0 12px 32px rgba(0,0,0,0.22)";
         box.style.textAlign = "center";
 
         const title = document.createElement("div");
         title.textContent = options.title || "通知結果";
-        title.style.fontSize = "26px";
+        title.style.fontSize = "22px";
         title.style.fontWeight = "800";
-        title.style.lineHeight = "1.4";
-        title.style.marginBottom = "16px";
+        title.style.lineHeight = "1.45";
+        title.style.marginBottom = "14px";
         title.style.color = options.type === "error" ? "#D32F2F" : "#06C755";
 
         const message = document.createElement("div");
         message.textContent = options.message || "";
-        message.style.fontSize = "22px";
+        message.style.fontSize = "17px";
         message.style.fontWeight = "700";
         message.style.lineHeight = "1.65";
         message.style.color = "#222222";
-        message.style.marginBottom = "24px";
+        message.style.marginBottom = "22px";
 
         const closeButton = document.createElement("button");
         closeButton.type = "button";
         closeButton.textContent = "閉じる";
         closeButton.style.width = "100%";
-        closeButton.style.padding = "15px";
-        closeButton.style.borderRadius = "12px";
+        closeButton.style.padding = "13px";
+        closeButton.style.borderRadius = "10px";
         closeButton.style.border = "none";
         closeButton.style.backgroundColor = options.type === "error" ? "#D32F2F" : "#06C755";
         closeButton.style.color = "#ffffff";
-        closeButton.style.fontSize = "18px";
+        closeButton.style.fontSize = "15px";
         closeButton.style.fontWeight = "800";
         closeButton.style.cursor = "pointer";
         closeButton.onclick = removeModal;
