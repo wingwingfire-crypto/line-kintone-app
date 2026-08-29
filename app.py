@@ -19,11 +19,17 @@ def add_cors_headers(response):
 
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN") or os.environ.get("LINE_TOKEN")
 KINTONE_API_TOKEN = os.environ.get("KINTONE_API_TOKEN")
+KINTONE_HIROSHIMA_API_TOKEN = os.environ.get("KINTONE_HIROSHIMA_API_TOKEN")
 CUSTOMER_KINTONE_API_TOKEN = os.environ.get("CUSTOMER_KINTONE_API_TOKEN")
 
 KINTONE_BASE = "https://9oh3c.cybozu.com"
 KINTONE_APP_ID = 6
+KINTONE_HIROSHIMA_APP_ID = 18
 CUSTOMER_KINTONE_APP_ID = 4
+SUPPORTED_KINTONE_APPS = {
+    KINTONE_APP_ID: KINTONE_API_TOKEN,
+    KINTONE_HIROSHIMA_APP_ID: KINTONE_HIROSHIMA_API_TOKEN,
+}
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://line-kintone-app.onrender.com")
 
 KINTONE_RECORD_URL = f"{KINTONE_BASE}/k/v1/record.json"
@@ -60,9 +66,54 @@ def today_jst_for_kintone_date():
     return datetime.now(JST).strftime("%Y-%m-%d")
 
 
-def kintone_headers():
-    return {"X-Cybozu-API-Token": KINTONE_API_TOKEN, "Content-Type": "application/json"}
+def normalize_app_id(app_id):
+    try:
+        normalized_app_id = int(app_id)
+    except (TypeError, ValueError):
+        normalized_app_id = KINTONE_APP_ID
 
+    if normalized_app_id not in SUPPORTED_KINTONE_APPS:
+        raise ValueError("未対応のKintoneアプリIDです。")
+
+    return normalized_app_id
+
+
+def get_kintone_api_token(app_id):
+    normalized_app_id = normalize_app_id(app_id)
+    api_token = SUPPORTED_KINTONE_APPS.get(normalized_app_id)
+
+    if not api_token:
+        raise RuntimeError(
+            f"KintoneアプリID {normalized_app_id} のAPIトークンが未設定です。"
+        )
+
+    return api_token
+
+
+def app_id_from_store(store):
+    normalized_store = str(store or "").strip().lower()
+
+    if normalized_store in ["hiroshima", "広島", "広島本店", "18"]:
+        return KINTONE_HIROSHIMA_APP_ID
+
+    return KINTONE_APP_ID
+
+
+def store_from_app_id(app_id):
+    normalized_app_id = normalize_app_id(app_id)
+
+    if normalized_app_id == KINTONE_HIROSHIMA_APP_ID:
+        return "hiroshima"
+
+    return "okayama"
+
+
+def kintone_headers(app_id=KINTONE_APP_ID):
+    api_token = get_kintone_api_token(app_id)
+    return {
+        "X-Cybozu-API-Token": api_token,
+        "Content-Type": "application/json"
+    }
 
 def customer_kintone_headers():
     return {"X-Cybozu-API-Token": CUSTOMER_KINTONE_API_TOKEN, "Content-Type": "application/json"}
@@ -182,37 +233,62 @@ def quick_reply_postback(label, data, display_text=None):
 # Kintone操作
 # =========================
 
-def add_kintone_record(record):
-    res = post_json(KINTONE_RECORD_URL, {"app": KINTONE_APP_ID, "record": record}, kintone_headers())
-    print("Kintone登録:", res.text)
+def add_kintone_record(record, app_id=KINTONE_APP_ID):
+    normalized_app_id = normalize_app_id(app_id)
+    res = post_json(
+        KINTONE_RECORD_URL,
+        {"app": normalized_app_id, "record": record},
+        kintone_headers(normalized_app_id)
+    )
+    print("Kintone登録:", normalized_app_id, res.text)
     return res
 
-
-def get_kintone_record(record_id):
-    res = requests.get(KINTONE_RECORD_URL, headers={"X-Cybozu-API-Token": KINTONE_API_TOKEN}, params={"app": KINTONE_APP_ID, "id": record_id})
+def get_kintone_record(record_id, app_id=KINTONE_APP_ID):
+    normalized_app_id = normalize_app_id(app_id)
+    res = requests.get(
+        KINTONE_RECORD_URL,
+        headers={
+            "X-Cybozu-API-Token": get_kintone_api_token(normalized_app_id)
+        },
+        params={"app": normalized_app_id, "id": record_id}
+    )
+    print("単体取得アプリID:", normalized_app_id)
     print("単体取得ステータス:", res.status_code)
     print("単体取得本文:", res.text)
     return res.json().get("record") if res.ok else None
 
-
-def get_records_by_lineid(line_user_id, limit=10):
+def get_records_by_lineid(line_user_id, limit=10, app_id=KINTONE_APP_ID):
+    normalized_app_id = normalize_app_id(app_id)
     safe_user_id = escape_kintone_query_value(line_user_id)
     query = f'lineid = "{safe_user_id}" order by $id desc limit {limit}'
-    res = requests.get(KINTONE_RECORDS_URL, headers={"X-Cybozu-API-Token": KINTONE_API_TOKEN}, params={"app": KINTONE_APP_ID, "query": query})
+    res = requests.get(
+        KINTONE_RECORDS_URL,
+        headers={
+            "X-Cybozu-API-Token": get_kintone_api_token(normalized_app_id)
+        },
+        params={"app": normalized_app_id, "query": query}
+    )
+    print("複数取得アプリID:", normalized_app_id)
     print("複数取得ステータス:", res.status_code)
     print("複数取得本文:", res.text)
     return res.json().get("records", []) if res.ok else []
 
-
-def update_kintone_record(record_id, fields):
-    res = requests.put(KINTONE_RECORD_URL, headers=kintone_headers(), data=json.dumps({"app": KINTONE_APP_ID, "id": record_id, "record": fields}, ensure_ascii=False).encode("utf-8"))
-    print("Kintone更新:", res.text)
+def update_kintone_record(record_id, fields, app_id=KINTONE_APP_ID):
+    normalized_app_id = normalize_app_id(app_id)
+    res = requests.put(
+        KINTONE_RECORD_URL,
+        headers=kintone_headers(normalized_app_id),
+        data=json.dumps(
+            {
+                "app": normalized_app_id,
+                "id": record_id,
+                "record": fields
+            },
+            ensure_ascii=False
+        ).encode("utf-8")
+    )
+    print("Kintone更新:", normalized_app_id, res.text)
     return res
-
-
-# =========================
-# 顧客リスト連携
-# =========================
 
 def customer_api_enabled():
     if not CUSTOMER_KINTONE_API_TOKEN:
@@ -294,7 +370,13 @@ def upsert_customer_record(lineid, name, phone):
 # 更新処理
 # =========================
 
-def update_location_pickup(record_id, address, latitude, longitude):
+def update_location_pickup(
+    record_id,
+    address,
+    latitude,
+    longitude,
+    app_id=KINTONE_APP_ID
+):
     map_url = f"https://www.google.com/maps?q={latitude},{longitude}"
     fields = {
         "shukajusho": make_field(address),
@@ -303,7 +385,7 @@ def update_location_pickup(record_id, address, latitude, longitude):
         "keido": make_field(str(longitude)),
         "mapurl": make_field(map_url)
     }
-    record = get_kintone_record(record_id)
+    record = get_kintone_record(record_id, app_id)
     if record:
         sameaddress = getvalue(record, "sameaddress", "")
         henkyakuhouhou = getvalue(record, "henkyakuhouhou", "")
@@ -315,10 +397,15 @@ def update_location_pickup(record_id, address, latitude, longitude):
                 "henkyakukeido": make_field(str(longitude)),
                 "henkyakumapurl": make_field(map_url)
             })
-    return update_kintone_record(record_id, fields)
+    return update_kintone_record(record_id, fields, app_id)
 
-
-def update_location_return(record_id, address, latitude, longitude):
+def update_location_return(
+    record_id,
+    address,
+    latitude,
+    longitude,
+    app_id=KINTONE_APP_ID
+):
     map_url = f"https://www.google.com/maps?q={latitude},{longitude}"
     return update_kintone_record(record_id, {
         "henkyakujusho": make_field(address),
@@ -326,24 +413,38 @@ def update_location_return(record_id, address, latitude, longitude):
         "henkyakuido": make_field(str(latitude)),
         "henkyakukeido": make_field(str(longitude)),
         "henkyakumapurl": make_field(map_url)
-    })
+    }, app_id)
 
+def update_notify_history(
+    record_id,
+    message,
+    app_id=KINTONE_APP_ID
+):
+    return update_kintone_record(record_id, {
+        "lastnotify": make_field(now_utc_for_kintone()),
+        "notifymessage": make_field(message)
+    }, app_id)
 
-def update_notify_history(record_id, message):
-    return update_kintone_record(record_id, {"lastnotify": make_field(now_utc_for_kintone()), "notifymessage": make_field(message)})
-
-
-def update_repair_answer(record_id, answer):
+def update_repair_answer(
+    record_id,
+    answer,
+    app_id=KINTONE_APP_ID
+):
     fields = {"shurikahikaito": make_field(answer)}
     if answer == "修理する":
         fields["ドロップダウン"] = make_field(STATUS_ORDERED)
-    return update_kintone_record(record_id, fields)
+    return update_kintone_record(record_id, fields, app_id)
 
-
-def update_cancel_action(record_id, action):
+def update_cancel_action(
+    record_id,
+    action,
+    app_id=KINTONE_APP_ID
+):
     status = STATUS_CANCEL_DISPOSE if action == "処分" else STATUS_CANCEL_RETURN if action == "返送" else STATUS_CANCEL_STORE
-    return update_kintone_record(record_id, {"canceltaio": make_field(action), "ドロップダウン": make_field(status)})
-
+    return update_kintone_record(record_id, {
+        "canceltaio": make_field(action),
+        "ドロップダウン": make_field(status)
+    }, app_id)
 
 def already_decided_text(current_answer, current_cancel_action):
     if current_cancel_action:
@@ -483,14 +584,14 @@ def build_status_text(record):
     return text
 
 
-def build_notify_flex_message(record):
+def build_notify_flex_message(record, app_id=KINTONE_APP_ID):
     status = getvalue(record, "ドロップダウン", "")
     if status == STATUS_RECEIVED:
         return build_received_notify_card(record)
     if status == STATUS_PICKUP_REQUESTED:
         return build_pickup_requested_notify_card(record)
     if status == STATUS_ESTIMATE or "見積" in status:
-        return build_estimate_flex_message(record)
+        return build_estimate_flex_message(record, app_id)
     if status == STATUS_ORDERED or "受注" in status:
         return build_ordered_notify_card(record)
     if status == STATUS_DONE_STORE:
@@ -522,7 +623,7 @@ def build_pickup_requested_notify_card(record):
     return make_card("🚚 修理品の集荷手配が完了しました", rid, "#1976D2", "#E3F2FD", body, alt="修理品の集荷手配が完了しました")
 
 
-def build_estimate_flex_message(record):
+def build_estimate_flex_message(record, app_id=KINTONE_APP_ID):
     rid = record_id_text(record)
     body = [
         name_line(record),
@@ -539,8 +640,8 @@ def build_estimate_flex_message(record):
         tc(shorten_text(getvalue(record, 'mitsumorinaiyo', ''), 80))
     ]
     footer = [
-        {"type": "button", "style": "primary", "height": "sm", "color": "#06C755", "action": {"type": "postback", "label": "修理する", "data": f"action=repair&recordid={rid}", "displayText": "修理する"}},
-        {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "キャンセルする", "data": f"action=cancel&recordid={rid}", "displayText": "キャンセルする"}}
+        {"type": "button", "style": "primary", "height": "sm", "color": "#06C755", "action": {"type": "postback", "label": "修理する", "data": f"action=repair&recordid={rid}&app={app_id}", "displayText": "修理する"}},
+        {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "キャンセルする", "data": f"action=cancel&recordid={rid}&app={app_id}", "displayText": "キャンセルする"}}
     ]
     return make_card("📄 修理のお見積りが届きました", rid, "#06C755", "#E8F5E9", body, footer, "修理のお見積りが届きました")
 
@@ -614,7 +715,7 @@ def readable_cancel_status(status):
     return "手続き中"
 
 
-def build_inquiry_flex_message(record):
+def build_inquiry_flex_message(record, app_id=KINTONE_APP_ID):
     rid = record_id_text(record)
     status = getvalue(record, "ドロップダウン", "")
     footer = None
@@ -639,8 +740,8 @@ def build_inquiry_flex_message(record):
         icon = "📄"
         bg = "#F3FFF7"
         footer = [
-            {"type": "button", "style": "primary", "height": "sm", "color": "#06C755", "action": {"type": "postback", "label": "修理する", "data": f"action=repair&recordid={rid}", "displayText": "修理する"}},
-            {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "キャンセルする", "data": f"action=cancel&recordid={rid}", "displayText": "キャンセルする"}}
+            {"type": "button", "style": "primary", "height": "sm", "color": "#06C755", "action": {"type": "postback", "label": "修理する", "data": f"action=repair&recordid={rid}&app={app_id}", "displayText": "修理する"}},
+            {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "キャンセルする", "data": f"action=cancel&recordid={rid}&app={app_id}", "displayText": "キャンセルする"}}
         ]
     elif status == STATUS_ORDERED or "受注" in status:
         readable_status = "修理作業中"
@@ -712,13 +813,13 @@ def build_repair_accept_flex_message(record):
     return make_card("✅ 修理進行を受け付けました", rid, "#06C755", "#E8F5E9", body)
 
 
-def build_cancel_action_flex_message(record):
+def build_cancel_action_flex_message(record, app_id=KINTONE_APP_ID):
     rid = record_id_text(record)
     body = [name_line(record), paragraph_box(["修理キャンセルのご回答を受け付けました。", "今後の対応を選択してください。"], "#FFF5F5")]
     footer = [
-        {"type": "button", "style": "primary", "height": "sm", "color": "#1565C0", "action": {"type": "postback", "label": "店舗引取", "data": f"action=cancel_store&recordid={rid}", "displayText": "店舗引取"}},
-        {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "返送", "data": f"action=cancel_return&recordid={rid}", "displayText": "返送"}},
-        {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "処分", "data": f"action=cancel_dispose&recordid={rid}", "displayText": "処分"}}
+        {"type": "button", "style": "primary", "height": "sm", "color": "#1565C0", "action": {"type": "postback", "label": "店舗引取", "data": f"action=cancel_store&recordid={rid}&app={app_id}", "displayText": "店舗引取"}},
+        {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "返送", "data": f"action=cancel_return&recordid={rid}&app={app_id}", "displayText": "返送"}},
+        {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "postback", "label": "処分", "data": f"action=cancel_dispose&recordid={rid}&app={app_id}", "displayText": "処分"}}
     ]
     return make_card("❌ キャンセルを受け付けました", rid, "#D32F2F", "#FFEBEE", body, footer, "キャンセル後の対応を選択してください")
 
@@ -748,12 +849,17 @@ def form():
 @app.route("/submit", methods=["POST"])
 def submit():
     data = request.get_json(force=True)
+    requested_app_id = data.get("app", "")
+    requested_store = data.get("store", "")
+    app_id = normalize_app_id(
+        requested_app_id or app_id_from_store(requested_store)
+    )
     lineuserid = data.get("lineuserid", "")
     name = data.get("name", "")
     phone = data.get("phone", "")
     raw_uketorihouhou = data.get("uketorihouhou", "")
     uketorihouhou = normalize_uketorihouhou_for_kintone(raw_uketorihouhou)
-    notify_url = f"{PUBLIC_BASE_URL}/notify?user={lineuserid}"
+    notify_url = f"{PUBLIC_BASE_URL}/notify?app={app_id}&user={lineuserid}"
 
     record = {
         "lineid": make_field(lineuserid),
@@ -778,7 +884,7 @@ def submit():
         "ドロップダウン": make_field(STATUS_RECEIVED)
     }
 
-    res = add_kintone_record(record)
+    res = add_kintone_record(record, app_id)
     if not res.ok:
         return res.text, 500
 
@@ -804,43 +910,48 @@ def notify():
 
     user_id = request.args.get("user", "")
     record_id = request.args.get("recordid", "") or request.args.get("id", "")
+    app_id = normalize_app_id(request.args.get("app", KINTONE_APP_ID))
 
     if not user_id and not record_id:
         return "user または recordid が必要です", 400
 
     if record_id:
-        record = get_kintone_record(record_id)
+        record = get_kintone_record(record_id, app_id)
     else:
-        records = get_records_by_lineid(user_id, limit=1)
+        records = get_records_by_lineid(user_id, limit=1, app_id=app_id)
         record = records[0] if records else None
         record_id = record_id_text(record) if record else ""
 
     if not record:
         return "対象レコードが見つかりません", 404
 
+    record_user_id = getvalue(record, "lineid", "")
+
     if not user_id:
-        user_id = getvalue(record, "lineid", "")
+        user_id = record_user_id
 
     if not user_id:
         return "LINEユーザーIDがありません", 400
+
+    if record_user_id and user_id != record_user_id:
+        return "LINEユーザーIDがレコードと一致しません", 403
 
     status = getvalue(record, "ドロップダウン", "")
     message = build_notify_message(record)
     past_message = getvalue(record, "notifymessage", "")
 
     if past_message.strip() == message.strip():
-        print("重複通知スキップ:", status)
+        print("重複通知スキップ:", app_id, status)
         return "同じ内容なので送信できません。何か内容を変えたら送れます。", 200
 
-    flex_message = build_notify_flex_message(record)
+    flex_message = build_notify_flex_message(record, app_id)
     line_res = send_line_push_messages(user_id, [flex_message])
 
     if not line_res.ok:
         return line_res.text, 500
 
-    update_notify_history(record_id, message)
+    update_notify_history(record_id, message, app_id)
     return f"送信完了: {status}", 200
-
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -859,7 +970,7 @@ def webhook():
                 if text == "修理問い合わせ":
                     handle_repair_inquiry(user_id, reply_token)
                 elif text.isdigit():
-                    handle_record_number_inquiry(text, reply_token)
+                    handle_record_number_inquiry(user_id, text, reply_token)
                 else:
                     send_line_reply(reply_token, "メッセージありがとうございます。\n修理状況を確認する場合は「修理問い合わせ」と送信してください。")
             elif message.get("type") == "location":
@@ -878,30 +989,94 @@ def webhook():
 # =========================
 
 def handle_repair_inquiry(user_id, reply_token):
-    records = get_records_by_lineid(user_id, limit=10)
-    if not records:
+    app_records = []
+
+    for app_id in [KINTONE_APP_ID, KINTONE_HIROSHIMA_APP_ID]:
+        try:
+            records = get_records_by_lineid(user_id, limit=10, app_id=app_id)
+        except Exception as error:
+            print("修理問い合わせ取得エラー:", app_id, repr(error))
+            records = []
+
+        for record in records:
+            app_records.append({"app_id": app_id, "record": record})
+
+    if not app_records:
         send_line_reply(reply_token, "現在、このLINEアカウントに紐づく修理受付は見つかりませんでした。")
         return
-    if len(records) == 1:
-        send_line_reply_messages(reply_token, [build_inquiry_flex_message(records[0])])
+
+    if len(app_records) == 1:
+        item = app_records[0]
+        send_line_reply_messages(
+            reply_token,
+            [build_inquiry_flex_message(item["record"], item["app_id"])]
+        )
         return
 
     text = "複数の修理受付があります。\n確認したい受付を選んでください。"
     quick_items = []
-    for record in records[:10]:
+
+    for item in app_records[:10]:
+        app_id = item["app_id"]
+        record = item["record"]
         rid = record_id_text(record)
-        label = f"{rid} {getvalue(record, 'maker', '')} {getvalue(record, 'model', '')}".strip() or f"受付番号 {rid}"
-        quick_items.append(quick_reply_postback(label[:20], f"action=checkstatus&recordid={rid}", label[:20]))
+        store_label = "広島" if app_id == KINTONE_HIROSHIMA_APP_ID else "岡山"
+        label = f"{store_label} {rid} {getvalue(record, 'maker', '')} {getvalue(record, 'model', '')}".strip() or f"{store_label} 受付番号 {rid}"
+        quick_items.append(
+            quick_reply_postback(
+                label[:20],
+                f"action=checkstatus&recordid={rid}&app={app_id}",
+                label[:20]
+            )
+        )
+
     send_line_reply(reply_token, text, quick_items)
 
+def handle_record_number_inquiry(user_id, record_number, reply_token):
+    matches = []
 
-def handle_record_number_inquiry(record_number, reply_token):
-    record = get_kintone_record(record_number)
-    if not record:
-        send_line_reply(reply_token, "指定された受付番号の修理受付が見つかりませんでした。")
+    for app_id in [KINTONE_APP_ID, KINTONE_HIROSHIMA_APP_ID]:
+        try:
+            record = get_kintone_record(record_number, app_id)
+        except Exception as error:
+            print("受付番号検索エラー:", app_id, repr(error))
+            record = None
+
+        if record and getvalue(record, "lineid", "") == user_id:
+            matches.append({"app_id": app_id, "record": record})
+
+    if not matches:
+        send_line_reply(
+            reply_token,
+            "指定された受付番号の修理受付が見つからないか、このLINEアカウントに紐づいていません。"
+        )
         return
-    send_line_reply_messages(reply_token, [build_inquiry_flex_message(record)])
 
+    if len(matches) == 1:
+        item = matches[0]
+        send_line_reply_messages(
+            reply_token,
+            [build_inquiry_flex_message(item["record"], item["app_id"])]
+        )
+        return
+
+    quick_items = []
+    for item in matches:
+        app_id = item["app_id"]
+        store_label = "広島" if app_id == KINTONE_HIROSHIMA_APP_ID else "岡山"
+        quick_items.append(
+            quick_reply_postback(
+                f"{store_label} 受付{record_number}",
+                f"action=checkstatus&recordid={record_number}&app={app_id}",
+                f"{store_label} 受付{record_number}"
+            )
+        )
+
+    send_line_reply(
+        reply_token,
+        "同じ受付番号が複数店舗にあります。\n確認する店舗を選んでください。",
+        quick_items
+    )
 
 def handle_location_message(user_id, reply_token, message):
     address = message.get("address", "")
@@ -909,13 +1084,38 @@ def handle_location_message(user_id, reply_token, message):
     latitude = message.get("latitude", "")
     longitude = message.get("longitude", "")
     location_text = address or title or "位置情報"
+    targets = []
 
-    records = get_records_by_lineid(user_id, limit=5)
-    if not records:
+    for app_id in [KINTONE_APP_ID, KINTONE_HIROSHIMA_APP_ID]:
+        try:
+            records = get_records_by_lineid(user_id, limit=5, app_id=app_id)
+        except Exception as error:
+            print("位置情報対象取得エラー:", app_id, repr(error))
+            records = []
+
+        for record in records:
+            shukajusho = getvalue(record, "shukajusho", "")
+            shukabasho = getvalue(record, "shukabasho", "")
+            henkyakuhouhou = getvalue(record, "henkyakuhouhou", "")
+            henkyakujusho = getvalue(record, "henkyakujusho", "")
+            henkyakubasho = getvalue(record, "henkyakubasho", "")
+            needs_pickup = not shukajusho and not shukabasho
+            needs_return = (
+                henkyakuhouhou == "LINEで位置情報を送る"
+                and not henkyakujusho
+                and not henkyakubasho
+            )
+
+            if needs_pickup or needs_return:
+                targets.append({"app_id": app_id, "record": record})
+
+    if not targets:
         send_line_reply(reply_token, "位置情報を受信しましたが、紐づく修理受付が見つかりませんでした。先に修理受付フォームを送信してください。")
         return
 
-    record = records[0]
+    target = targets[0]
+    app_id = target["app_id"]
+    record = target["record"]
     rid = record_id_text(record)
     shukajusho = getvalue(record, "shukajusho", "")
     shukabasho = getvalue(record, "shukabasho", "")
@@ -925,13 +1125,22 @@ def handle_location_message(user_id, reply_token, message):
     sameaddress = getvalue(record, "sameaddress", "")
 
     if not shukajusho and not shukabasho:
-        res = update_location_pickup(rid, location_text, latitude, longitude)
+        res = update_location_pickup(
+            rid,
+            location_text,
+            latitude,
+            longitude,
+            app_id
+        )
         if res.ok:
             if sameaddress == "はい" or henkyakuhouhou == "集荷場所と同じ":
                 send_line_reply(reply_token, "集荷住所を登録しました。\n返却住所は集荷住所と同じとして登録しています。")
             elif henkyakuhouhou == "LINEで位置情報を送る":
-                updated_record = get_kintone_record(rid)
-                send_line_reply_messages(reply_token, [build_return_location_request_flex_message(updated_record)])
+                updated_record = get_kintone_record(rid, app_id)
+                send_line_reply_messages(
+                    reply_token,
+                    [build_return_location_request_flex_message(updated_record)]
+                )
             else:
                 send_line_reply(reply_token, "集荷住所を登録しました。")
         else:
@@ -939,25 +1148,37 @@ def handle_location_message(user_id, reply_token, message):
         return
 
     if henkyakuhouhou == "LINEで位置情報を送る" and not henkyakujusho and not henkyakubasho:
-        res = update_location_return(rid, location_text, latitude, longitude)
-        send_line_reply(reply_token, "返却住所を登録しました。\nご協力ありがとうございます。" if res.ok else "返却場所の登録に失敗しました。お手数ですが店舗までご連絡ください。")
+        res = update_location_return(
+            rid,
+            location_text,
+            latitude,
+            longitude,
+            app_id
+        )
+        send_line_reply(
+            reply_token,
+            "返却住所を登録しました。\nご協力ありがとうございます。" if res.ok else "返却場所の登録に失敗しました。お手数ですが店舗までご連絡ください。"
+        )
         return
 
     send_line_reply(reply_token, "集荷住所と返却住所はすでに登録済みです。\n変更が必要な場合は店舗までご連絡ください。")
-
 
 def handle_postback(user_id, reply_token, data):
     parsed = parse_qs(data)
     action = parsed.get("action", [""])[0]
     record_id = parsed.get("recordid", [""])[0]
+    app_id = normalize_app_id(parsed.get("app", [KINTONE_APP_ID])[0])
 
     if not action or not record_id:
         send_line_reply(reply_token, "操作内容を確認できませんでした。")
         return
 
-    record_before = get_kintone_record(record_id)
+    record_before = get_kintone_record(record_id, app_id)
     if not record_before:
         send_line_reply(reply_token, "対象の修理受付が見つかりませんでした。")
+        return
+    if getvalue(record_before, "lineid", "") != user_id:
+        send_line_reply(reply_token, "この修理受付は、このLINEアカウントに紐づいていないため操作できません。")
         return
 
     current_answer = getvalue(record_before, "shurikahikaito", "")
@@ -965,18 +1186,18 @@ def handle_postback(user_id, reply_token, data):
     current_status = getvalue(record_before, "ドロップダウン", "")
 
     if action == "checkstatus":
-        send_line_reply_messages(reply_token, [build_inquiry_flex_message(record_before)])
+        send_line_reply_messages(reply_token, [build_inquiry_flex_message(record_before, app_id)])
         return
 
     if action == "repair":
         if current_cancel_action or current_answer in ["キャンセル", "修理する"] or is_cancel_status(current_status):
             send_line_reply(reply_token, already_decided_text(current_answer, current_cancel_action))
             return
-        res = update_repair_answer(record_id, "修理する")
+        res = update_repair_answer(record_id, "修理する", app_id)
         if not res.ok:
             send_line_reply(reply_token, "回答の登録に失敗しました。お手数ですが店舗までご連絡ください。")
             return
-        record_after = get_kintone_record(record_id)
+        record_after = get_kintone_record(record_id, app_id)
         send_line_reply_messages(reply_token, [build_repair_accept_flex_message(record_after)])
         return
 
@@ -985,14 +1206,14 @@ def handle_postback(user_id, reply_token, data):
             send_line_reply(reply_token, already_decided_text(current_answer, current_cancel_action))
             return
         if current_answer == "キャンセル":
-            send_line_reply_messages(reply_token, [build_cancel_action_flex_message(record_before)])
+            send_line_reply_messages(reply_token, [build_cancel_action_flex_message(record_before, app_id)])
             return
-        res = update_repair_answer(record_id, "キャンセル")
+        res = update_repair_answer(record_id, "キャンセル", app_id)
         if not res.ok:
             send_line_reply(reply_token, "キャンセル回答の登録に失敗しました。お手数ですが店舗までご連絡ください。")
             return
-        record_after = get_kintone_record(record_id)
-        send_line_reply_messages(reply_token, [build_cancel_action_flex_message(record_after)])
+        record_after = get_kintone_record(record_id, app_id)
+        send_line_reply_messages(reply_token, [build_cancel_action_flex_message(record_after, app_id)])
         return
 
     if action in ["cancel_store", "cancel_return", "cancel_dispose"]:
@@ -1006,11 +1227,11 @@ def handle_postback(user_id, reply_token, data):
             send_line_reply(reply_token, "先に「キャンセルする」を選択してください。\n変更が必要な場合は店舗までご連絡ください。")
             return
         selected_action = "店舗引取" if action == "cancel_store" else "返送" if action == "cancel_return" else "処分"
-        res = update_cancel_action(record_id, selected_action)
+        res = update_cancel_action(record_id, selected_action, app_id)
         if not res.ok:
             send_line_reply(reply_token, "登録に失敗しました。")
             return
-        record_after = get_kintone_record(record_id)
+        record_after = get_kintone_record(record_id, app_id)
         send_line_reply_messages(reply_token, [build_cancel_done_flex_message(record_after, selected_action)])
         return
 
