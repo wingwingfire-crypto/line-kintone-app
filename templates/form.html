@@ -256,6 +256,7 @@
 
   <script>
     let userId = "";
+    let isSubmitting = false;
     const liffId = "2009322369-Om7WRQAU";
     const storeInfoHtml = `<div class="store-box"><strong>国本刃物 上中野店</strong><br>〒700-0972<br>岡山県岡山市北区上中野2丁目27-12<br>電話番号：086-230-6551</div>`;
     const hiroshimaStoreInfoHtml = `<div class="store-box"><strong>広島本店</strong><br>店舗の所在地・電話番号はLINEの店舗案内をご確認ください。</div>`;
@@ -539,10 +540,24 @@
 
     document.getElementById("repairForm").addEventListener("submit", async function (e) {
       e.preventDefault();
+
+      if (isSubmitting) {
+        return;
+      }
+
       const msg = document.getElementById("msg");
+      const submitBtn = document.getElementById("submitBtn");
+      const originalSubmitButtonText = submitBtn.textContent;
+
       try {
         if (!userId) { alert("LINEユーザーIDが取得できていません。LINEアプリから開き直してください。"); return; }
         if (!validateForm()) return;
+
+        isSubmitting = true;
+        submitBtn.disabled = true;
+        submitBtn.textContent = "送信中...";
+        msg.innerHTML = "";
+
         const selectedIssues = getSelectedIssues();
         const store = document.getElementById("store").value;
         const method = document.getElementById("uketorihouhou").value;
@@ -600,8 +615,13 @@
         document.getElementById("mainMethod").value = "";
         document.getElementById("pickupMethod").value = "";
         resetReturnFields();
+        submitBtn.disabled = true;
+        submitBtn.textContent = "送信済み";
         window.scrollTo({ top: document.body.scrollHeight, behavior:"smooth" });
       } catch (err) {
+        isSubmitting = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalSubmitButtonText;
         msg.innerHTML = `<div class="error-box">❌ エラー：${err}</div>`;
         alert("送信エラー\n\n" + err);
       }
