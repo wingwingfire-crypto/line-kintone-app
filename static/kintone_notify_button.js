@@ -208,9 +208,29 @@
         button.style.opacity = "0.65";
         button.style.cursor = "not-allowed";
 
-        fetch(BASE_URL + "/notify?recordid=" + encodeURIComponent(recordId), {
-            method: "GET"
-        })
+        const appId = kintone.app.getId();
+
+        if (!appId) {
+            button.disabled = false;
+            button.textContent = originalText;
+            button.style.opacity = "1";
+            button.style.cursor = "pointer";
+            showMessageModal({
+                title: "送信できませんでした",
+                message: "アプリIDを確認できませんでした。",
+                type: "error"
+            });
+            return;
+        }
+
+        fetch(
+            BASE_URL +
+                "/notify?app=" + encodeURIComponent(appId) +
+                "&recordid=" + encodeURIComponent(recordId),
+            {
+                method: "GET"
+            }
+        )
             .then(function (response) {
                 return response.text().then(function (text) {
                     return {
