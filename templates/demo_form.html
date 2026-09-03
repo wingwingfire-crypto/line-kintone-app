@@ -362,6 +362,17 @@
                     required
                 >
 
+                <label for="deliveryMethod">
+                    受取・発送方法 <span class="required">必須</span>
+                </label>
+                <select id="deliveryMethod" name="deliveryMethod" required>
+                    <option value="🏬店頭受取" selected>🏬店頭受取</option>
+                    <option value="🚚郵送">🚚郵送</option>
+                </select>
+                <p class="hint">
+                    郵送を選択した場合は、発送方法や送料について店舗から確認します。
+                </p>
+
                 <label for="remarks">
                     備考 <span class="optional">任意</span>
                 </label>
@@ -682,6 +693,9 @@
                     company: document.getElementById("company").value.trim(),
                     rentalScheduledDate: rentalDateInput.value,
                     returnScheduledDate: returnDateInput.value,
+                    deliveryMethod: document.getElementById(
+                        "deliveryMethod"
+                    ).value,
                     remarks: document.getElementById("remarks").value.trim(),
                     kiyakuagree: "同意済み"
                 };
