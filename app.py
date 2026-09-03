@@ -1352,7 +1352,7 @@ def demo_headers(*tokens):
 def get_available_demo_machines(store):
     store_key, config = get_demo_store_config(store)
     safe_status = escape_kintone_query_value(DEMO_AVAILABLE_STATUS)
-    query = f'rental_availability = "{safe_status}" order by 数値_0 asc'
+    query = f'rental_availability in ("{safe_status}") order by 数値_0 asc'
 
     response = requests.get(
         KINTONE_RECORDS_URL,
