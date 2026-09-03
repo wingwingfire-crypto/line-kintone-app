@@ -1507,6 +1507,7 @@ def build_demo_rental_record(data, config, master_record):
             data.get("rentalScheduledDate", "")
         ),
         "shukakiboubi": make_field(data.get("returnScheduledDate", "")),
+        "delivery_method": make_field(data.get("deliveryMethod", "")),
         "ドロップダウン": make_field(DEMO_RESERVATION_STATUS),
         "kiyakuagree": make_field("同意済み"),
         "remarks": make_field(data.get("remarks", "")),
@@ -1559,6 +1560,7 @@ def validate_demo_rental_request(data):
         "LINEユーザーID": data.get("lineuserid"),
         "貸出予定日": data.get("rentalScheduledDate"),
         "返却予定日": data.get("returnScheduledDate"),
+        "受取・発送方法": data.get("deliveryMethod"),
     }
 
     for label, value in required_values.items():
@@ -1581,6 +1583,100 @@ def validate_demo_rental_request(data):
         raise ValueError(
             "返却予定日は貸出予定日以降の日付を選択してください。"
         )
+
+
+def format_demo_date_japanese(value):
+    try:
+        parsed = datetime.strptime(str(value or ""), "%Y-%m-%d")
+        return f"{parsed.year}年{parsed.month}月{parsed.day}日"
+    except (TypeError, ValueError):
+        return str(value or "未入力")
+
+
+def format_demo_received_datetime():
+    return datetime.now(JST).strftime("%Y年%-m月%-d日 %-H:%M")
+
+
+def demo_detail_row(label, value):
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "margin": "md",
+        "contents": [
+            tc(label, "xs", "bold", "#6B7280"),
+            tc(str(value or "未入力"), "sm", "bold", "#222222", "xs"),
+        ],
+    }
+
+
+def build_demo_reservation_card(
+    record_id,
+    customer_name,
+    product_name,
+    received_at,
+    rental_date,
+    return_date,
+    delivery_method,
+):
+    body = [
+        tc(f"{customer_name or 'お客様'} 様", "md", "bold", "#222222"),
+        paragraph_box(
+            [
+                "デモ機の貸出受付が完了しました。",
+                "ご利用いただき誠にありがとうございます！",
+                "以下の内容で受付を承っております。",
+            ],
+            "#F3FFF7",
+        ),
+        tc("貸出受付内容", "md", "bold", "#06C755"),
+        {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#F8FAF9",
+            "cornerRadius": "12px",
+            "paddingAll": "14px",
+            "contents": [
+                demo_detail_row("デモ機", product_name),
+                demo_detail_row("受付日時", received_at),
+                demo_detail_row(
+                    "貸出予定期間",
+                    f"{format_demo_date_japanese(rental_date)} ～ "
+                    f"{format_demo_date_japanese(return_date)}",
+                ),
+                demo_detail_row("受取・発送方法", delivery_method),
+            ],
+        },
+        {
+            "type": "box",
+            "layout": "horizontal",
+            "backgroundColor": "#FFF8E1",
+            "cornerRadius": "12px",
+            "paddingAll": "14px",
+            "contents": [
+                tc("⚠️", "lg"),
+                {
+                    "type": "text",
+                    "text": (
+                        "貸出予定日を過ぎた予約は、管理者確認後にキャンセルとなります。"
+                        "引き続きご利用を希望される場合は、再度LINEからお申し込みください。"
+                    ),
+                    "size": "sm",
+                    "color": "#7A5A00",
+                    "wrap": True,
+                    "margin": "sm",
+                    "flex": 8,
+                },
+            ],
+        },
+    ]
+    return make_card(
+        "✅ デモ機の貸出受付が完了しました",
+        record_id,
+        "#06C755",
+        "#E8F5E9",
+        body,
+        alt="デモ機の貸出受付が完了しました",
+    )
 
 
 @app.route("/demo-form")
@@ -1798,25 +1894,19 @@ def demo_submit():
         product_name = getvalue(master_record, "product_name", "")
         line_user_id = str(data.get("lineuserid", "")).strip()
         store_label = config["label"]
-        confirmation_text = (
-            "デモ機の貸出予約を受け付けました。\n"
-            f"受付番号：{rental_record_id}\n"
-            f"店舗：{store_label}\n"
-            f"デモ機No：{data.get('demoNo', '')}\n"
-            f"商品名：{product_name}\n"
-            f"貸出予定日：{data.get('rentalScheduledDate', '')}\n"
-            f"返却予定日：{data.get('returnScheduledDate', '')}"
+        reservation_card = build_demo_reservation_card(
+            rental_record_id,
+            str(data.get("name", "")).strip(),
+            product_name,
+            format_demo_received_datetime(),
+            data.get("rentalScheduledDate", ""),
+            data.get("returnScheduledDate", ""),
+            data.get("deliveryMethod", ""),
         )
         line_response = send_line_push_messages(
             line_user_id,
-            [
-                {
-                    "type": "text",
-                    "text": confirmation_text,
-                }
-            ],
+            [reservation_card],
         )
-
         if not line_response.ok:
             print(
                 "デモ機予約後のLINE通知失敗:",
