@@ -1321,6 +1321,112 @@ def normalize_demo_store(store):
     return aliases[normalized_store]
 
 
+def get_demo_store_config_by_rental_app_id(app_id):
+    try:
+        normalized_app_id = int(app_id)
+    except (TypeError, ValueError):
+        raise ValueError("貸出表のアプリIDが正しくありません。")
+
+    for store_key, config in DEMO_STORE_CONFIG.items():
+        if config["rental_app_id"] == normalized_app_id:
+            if not config["master_token"] or not config["rental_token"]:
+                raise RuntimeError(
+                    f"{config['label']}のデモ機APIトークンが未設定です。"
+                )
+            return store_key, config
+
+    raise ValueError("未対応のデモ機貸出表です。")
+
+
+def get_demo_rental_record(app_id, record_id):
+    store_key, config = get_demo_store_config_by_rental_app_id(app_id)
+    response = requests.get(
+        KINTONE_RECORD_URL,
+        headers={"X-Cybozu-API-Token": config["rental_token"]},
+        params={"app": config["rental_app_id"], "id": record_id},
+        timeout=20,
+    )
+    print(
+        "デモ機貸出レコード取得:",
+        store_key,
+        response.status_code,
+        response.text,
+    )
+    if not response.ok:
+        return store_key, config, None
+    return store_key, config, response.json().get("record")
+
+
+def update_demo_rental_notify_message(config, record_id, message_key):
+    response = requests.put(
+        KINTONE_RECORD_URL,
+        headers=demo_headers(config["rental_token"]),
+        data=json.dumps(
+            {
+                "app": config["rental_app_id"],
+                "id": record_id,
+                "record": {
+                    "demo_notify_message": make_field(message_key),
+                },
+            },
+            ensure_ascii=False,
+        ).encode("utf-8"),
+        timeout=20,
+    )
+    print(
+        "デモ機通知履歴更新:",
+        config["label"],
+        response.status_code,
+        response.text,
+    )
+    return response
+
+
+def has_other_active_demo_rental(config, demo_no, current_record_id):
+    safe_demo_no = escape_kintone_query_value(demo_no)
+    safe_current_id = escape_kintone_query_value(current_record_id)
+    demo_field = config["rental_demo_field"]
+    query = (
+        f'{demo_field} = "{safe_demo_no}" '
+        f'and $id != "{safe_current_id}" '
+        'and ドロップダウン in ("⚪予約受付", "🔵貸出中") limit 1'
+    )
+    response = requests.get(
+        KINTONE_RECORDS_URL,
+        headers={"X-Cybozu-API-Token": config["rental_token"]},
+        params={"app": config["rental_app_id"], "query": query},
+        timeout=20,
+    )
+    print(
+        "別の有効予約確認:",
+        config["label"],
+        response.status_code,
+        response.text,
+    )
+    if not response.ok:
+        raise RuntimeError("別の有効予約を確認できませんでした。")
+    return bool(response.json().get("records", []))
+
+
+def set_master_available_if_safe(store_key, config, demo_no, current_record_id):
+    if has_other_active_demo_rental(config, demo_no, current_record_id):
+        return False, "別の有効予約があるため、マスターは貸出不可のままです。"
+
+    master_record = get_demo_master_record(store_key, demo_no)
+    if not master_record:
+        raise RuntimeError("対応するデモ機マスターが見つかりません。")
+
+    response = update_demo_master_availability(
+        store_key,
+        getvalue(master_record, "$id", ""),
+        DEMO_AVAILABLE_STATUS,
+        getvalue(master_record, "$revision", ""),
+    )
+    if not response.ok:
+        raise RuntimeError("デモ機マスターを貸出可に変更できませんでした。")
+    return True, "デモ機マスターを貸出可に変更しました。"
+
+
 def get_demo_store_config(store):
     store_key = normalize_demo_store(store)
     config = DEMO_STORE_CONFIG[store_key]
@@ -1585,6 +1691,82 @@ def validate_demo_rental_request(data):
         )
 
 
+def build_demo_admin_notification_key(record):
+    status = getvalue(record, "ドロップダウン", "")
+    record_id = record_id_text(record)
+    demo_no = getvalue(record, "ルックアップ", "") or getvalue(
+        record,
+        "demo_no_lookup",
+        "",
+    )
+    return f"{status}|受付番号{record_id}|デモ機No{demo_no}"
+
+
+def build_demo_admin_notification_card(record):
+    status = getvalue(record, "ドロップダウン", "")
+    record_id = record_id_text(record)
+    customer_name = getvalue(record, "customer_name", "") or "お客様"
+    product_name = getvalue(record, "文字列__1行_", "") or "デモ機"
+    rental_date = getvalue(record, "rental_scheduled_date", "")
+    return_date = getvalue(record, "shukakiboubi", "")
+    delivery_method = getvalue(record, "delivery_method", "") or "未入力"
+    period = (
+        f"{format_demo_date_japanese(rental_date)} ～ "
+        f"{format_demo_date_japanese(return_date)}"
+    )
+
+    if status == "⚪予約受付":
+        title = "⚪ デモ機の予約を受け付けています"
+        color = "#06C755"
+        sub_color = "#E8F5E9"
+        lines = [
+            "デモ機の貸出予約を受け付けています。",
+            "貸出予定日に受取・発送のご案内に沿ってお手続きください。",
+        ]
+    elif status == "🔵貸出中":
+        title = "🔵 デモ機の貸出を開始しました"
+        color = "#1976D2"
+        sub_color = "#E3F2FD"
+        lines = [
+            "デモ機の貸出を開始しました。",
+            "返却予定日までに、付属品と一緒にご返却ください。",
+        ]
+    elif status == "🟢返却完了":
+        title = "🟢 デモ機の返却が完了しました"
+        color = "#06C755"
+        sub_color = "#E8F5E9"
+        lines = [
+            "デモ機の返却を確認しました。",
+            "この度はデモ機貸出サービスをご利用いただき、ありがとうございました。",
+        ]
+    elif status == "🔴キャンセル":
+        title = "🔴 デモ機の予約をキャンセルしました"
+        color = "#D32F2F"
+        sub_color = "#FFEBEE"
+        lines = [
+            "デモ機の貸出予約をキャンセルしました。",
+            "引き続きご利用を希望される場合は、LINEから再度お申し込みください。",
+        ]
+    else:
+        raise ValueError("現在の貸出状況は通知対象ではありません。")
+
+    body = [
+        tc(f"{customer_name} 様", "md", "bold", "#222222"),
+        paragraph_box(lines, "#F8FAF9"),
+        info_box("対象デモ機", product_name, color, "#F8FAF9"),
+        demo_detail_row("貸出予定期間", period),
+        demo_detail_row("受取・発送方法", delivery_method),
+    ]
+    return make_card(
+        title,
+        record_id,
+        color,
+        sub_color,
+        body,
+        alt=title,
+    )
+
+
 def format_demo_date_japanese(value):
     try:
         parsed = datetime.strptime(str(value or ""), "%Y-%m-%d")
@@ -1677,6 +1859,120 @@ def build_demo_reservation_card(
         body,
         alt="デモ機の貸出受付が完了しました",
     )
+
+
+@app.route("/demo-admin-notify", methods=["POST", "OPTIONS"])
+def demo_admin_notify():
+    if request.method == "OPTIONS":
+        return "", 204
+
+    try:
+        data = request.get_json(force=True) or {}
+        app_id = data.get("appId")
+        record_id = str(data.get("recordId", "")).strip()
+        if not record_id:
+            raise ValueError("レコード番号がありません。")
+
+        store_key, config, record = get_demo_rental_record(app_id, record_id)
+        if not record:
+            return (
+                json.dumps(
+                    {"ok": False, "message": "対象レコードが見つかりません。"},
+                    ensure_ascii=False,
+                ),
+                404,
+                {"Content-Type": "application/json; charset=utf-8"},
+            )
+
+        status = getvalue(record, "ドロップダウン", "")
+        if status not in ["⚪予約受付", "🔵貸出中", "🟢返却完了", "🔴キャンセル"]:
+            raise ValueError("通知対象の貸出状況ではありません。")
+
+        line_user_id = getvalue(record, "ルックアップ_0", "")
+        if not line_user_id:
+            raise ValueError("LINEユーザーIDが登録されていません。")
+
+        message_key = build_demo_admin_notification_key(record)
+        previous_key = getvalue(record, "demo_notify_message", "")
+        if previous_key.strip() == message_key.strip():
+            return (
+                json.dumps(
+                    {"ok": False, "duplicate": True, "message": "同じ内容はすでに通知済みです。"},
+                    ensure_ascii=False,
+                ),
+                409,
+                {"Content-Type": "application/json; charset=utf-8"},
+            )
+
+        master_message = "マスターの変更はありません。"
+        if status in ["🟢返却完了", "🔴キャンセル"]:
+            demo_no = getvalue(record, config["rental_demo_field"], "")
+            if not demo_no:
+                raise ValueError("デモ機Noが登録されていません。")
+            _, master_message = set_master_available_if_safe(
+                store_key,
+                config,
+                demo_no,
+                record_id,
+            )
+
+        card = build_demo_admin_notification_card(record)
+        line_response = send_line_push_messages(line_user_id, [card])
+        if not line_response.ok:
+            return (
+                json.dumps(
+                    {"ok": False, "message": "LINE通知の送信に失敗しました。"},
+                    ensure_ascii=False,
+                ),
+                502,
+                {"Content-Type": "application/json; charset=utf-8"},
+            )
+
+        history_response = update_demo_rental_notify_message(
+            config,
+            record_id,
+            message_key,
+        )
+        if not history_response.ok:
+            return (
+                json.dumps(
+                    {
+                        "ok": False,
+                        "message": "LINE通知は送信しましたが、通知履歴を保存できませんでした。",
+                    },
+                    ensure_ascii=False,
+                ),
+                500,
+                {"Content-Type": "application/json; charset=utf-8"},
+            )
+
+        return (
+            json.dumps(
+                {
+                    "ok": True,
+                    "message": f"LINE通知を送信しました。{master_message}",
+                },
+                ensure_ascii=False,
+            ),
+            200,
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
+    except ValueError as error:
+        return (
+            json.dumps({"ok": False, "message": str(error)}, ensure_ascii=False),
+            400,
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
+    except Exception as error:
+        print("デモ機管理者通知エラー:", repr(error))
+        return (
+            json.dumps(
+                {"ok": False, "message": "管理者通知の処理中にエラーが発生しました。"},
+                ensure_ascii=False,
+            ),
+            500,
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
 
 
 @app.route("/demo-form")
