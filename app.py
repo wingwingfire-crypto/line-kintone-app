@@ -4,7 +4,7 @@ import html
 import requests
 from datetime import datetime, timezone, timedelta
 from urllib.parse import parse_qs
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, Response
 
 app = Flask(__name__)
 
@@ -1402,6 +1402,12 @@ def get_available_demo_machines(store):
                     "rental_availability",
                     "",
                 ),
+                "imageUrl": (
+                    f"/demo-image?store={store_key}"
+                    f"&fileKey={getvalue(record, 'demo_files', [])[0].get('fileKey', '')}"
+                    if getvalue(record, "demo_files", [])
+                    else ""
+                ),
             }
         )
 
@@ -1580,6 +1586,58 @@ def validate_demo_rental_request(data):
 @app.route("/demo-form")
 def demo_form():
     return render_template("demo_form.html")
+
+
+@app.route("/demo-image", methods=["GET"])
+def demo_image():
+    try:
+        store = request.args.get("store", "")
+        file_key = str(request.args.get("fileKey", "")).strip()
+
+        if not file_key:
+            return "fileKeyが必要です。", 400
+
+        store_key, config = get_demo_store_config(store)
+        response = requests.get(
+            f"{KINTONE_BASE}/k/v1/file.json",
+            headers={
+                "X-Cybozu-API-Token": config["master_token"]
+            },
+            params={"fileKey": file_key},
+            timeout=20,
+        )
+        print(
+            "デモ機画像取得:",
+            store_key,
+            response.status_code,
+            response.headers.get("Content-Type", ""),
+        )
+
+        if not response.ok:
+            return "画像を取得できませんでした。", response.status_code
+
+        content_type = response.headers.get(
+            "Content-Type",
+            "application/octet-stream",
+        )
+
+        if not content_type.lower().startswith("image/"):
+            return "画像形式ではありません。", 415
+
+        return Response(
+            response.content,
+            status=200,
+            content_type=content_type,
+            headers={
+                "Cache-Control": "private, max-age=300",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+    except ValueError as error:
+        return str(error), 400
+    except Exception as error:
+        print("デモ機画像取得エラー:", repr(error))
+        return "画像を取得できませんでした。", 500
 
 
 @app.route("/api/demo-machines", methods=["GET"])
