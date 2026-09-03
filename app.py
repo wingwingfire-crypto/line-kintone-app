@@ -26,6 +26,51 @@ KINTONE_BASE = "https://9oh3c.cybozu.com"
 KINTONE_APP_ID = 6
 KINTONE_HIROSHIMA_APP_ID = 18
 CUSTOMER_KINTONE_APP_ID = 4
+
+
+# =========================================================
+# デモ機貸出設定
+# =========================================================
+OKAYAMA_DEMO_MASTER_APP_ID = 7
+OKAYAMA_DEMO_RENTAL_APP_ID = 10
+HIROSHIMA_DEMO_MASTER_APP_ID = 23
+HIROSHIMA_DEMO_RENTAL_APP_ID = 24
+
+OKAYAMA_DEMO_MASTER_API_TOKEN = os.environ.get(
+    "KINTONE_OKAYAMA_DEMO_MASTER_API_TOKEN"
+)
+OKAYAMA_DEMO_RENTAL_API_TOKEN = os.environ.get(
+    "KINTONE_OKAYAMA_DEMO_RENTAL_API_TOKEN"
+)
+HIROSHIMA_DEMO_MASTER_API_TOKEN = os.environ.get(
+    "KINTONE_HIROSHIMA_DEMO_MASTER_API_TOKEN"
+)
+HIROSHIMA_DEMO_RENTAL_API_TOKEN = os.environ.get(
+    "KINTONE_HIROSHIMA_DEMO_RENTAL_API_TOKEN"
+)
+
+DEMO_AVAILABLE_STATUS = "貸出可⭕️"
+DEMO_UNAVAILABLE_STATUS = "貸出不可❌"
+DEMO_RESERVATION_STATUS = "⚪予約受付"
+
+DEMO_STORE_CONFIG = {
+    "okayama": {
+        "label": "岡山",
+        "master_app_id": OKAYAMA_DEMO_MASTER_APP_ID,
+        "rental_app_id": OKAYAMA_DEMO_RENTAL_APP_ID,
+        "master_token": OKAYAMA_DEMO_MASTER_API_TOKEN,
+        "rental_token": OKAYAMA_DEMO_RENTAL_API_TOKEN,
+        "rental_demo_field": "ルックアップ",
+    },
+    "hiroshima": {
+        "label": "広島",
+        "master_app_id": HIROSHIMA_DEMO_MASTER_APP_ID,
+        "rental_app_id": HIROSHIMA_DEMO_RENTAL_APP_ID,
+        "master_token": HIROSHIMA_DEMO_MASTER_API_TOKEN,
+        "rental_token": HIROSHIMA_DEMO_RENTAL_API_TOKEN,
+        "rental_demo_field": "demo_no_lookup",
+    },
+}
 SUPPORTED_KINTONE_APPS = {
     KINTONE_APP_ID: KINTONE_API_TOKEN,
     KINTONE_HIROSHIMA_APP_ID: KINTONE_HIROSHIMA_API_TOKEN,
@@ -1252,6 +1297,524 @@ def handle_postback(user_id, reply_token, data):
         return
 
     send_line_reply(reply_token, "未対応の操作です。")
+
+
+
+# =========================================================
+# デモ機貸出 共通処理
+# =========================================================
+def normalize_demo_store(store):
+    normalized_store = str(store or "").strip().lower()
+
+    aliases = {
+        "okayama": "okayama",
+        "岡山": "okayama",
+        "岡山上中野店": "okayama",
+        "hiroshima": "hiroshima",
+        "広島": "hiroshima",
+        "広島本店": "hiroshima",
+    }
+
+    if normalized_store not in aliases:
+        raise ValueError("店舗を選択してください。")
+
+    return aliases[normalized_store]
+
+
+def get_demo_store_config(store):
+    store_key = normalize_demo_store(store)
+    config = DEMO_STORE_CONFIG[store_key]
+
+    if not config["master_token"]:
+        raise RuntimeError(
+            f"{config['label']}のデモ機マスターAPIトークンが未設定です。"
+        )
+
+    if not config["rental_token"]:
+        raise RuntimeError(
+            f"{config['label']}のデモ機貸出表APIトークンが未設定です。"
+        )
+
+    return store_key, config
+
+
+def join_api_tokens(*tokens):
+    return ",".join(token for token in tokens if token)
+
+
+def demo_headers(*tokens):
+    return {
+        "X-Cybozu-API-Token": join_api_tokens(*tokens),
+        "Content-Type": "application/json",
+    }
+
+
+def get_available_demo_machines(store):
+    store_key, config = get_demo_store_config(store)
+    safe_status = escape_kintone_query_value(DEMO_AVAILABLE_STATUS)
+    query = f'rental_availability = "{safe_status}" order by 数値_0 asc'
+
+    response = requests.get(
+        KINTONE_RECORDS_URL,
+        headers={
+            "X-Cybozu-API-Token": config["master_token"]
+        },
+        params={
+            "app": config["master_app_id"],
+            "query": query,
+        },
+        timeout=20,
+    )
+    print(
+        "貸出可能デモ機取得:",
+        store_key,
+        response.status_code,
+        response.text,
+    )
+
+    if not response.ok:
+        raise RuntimeError("貸出可能なデモ機を取得できませんでした。")
+
+    machines = []
+
+    for record in response.json().get("records", []):
+        machines.append(
+            {
+                "recordId": getvalue(record, "$id", ""),
+                "demoNo": getvalue(record, "数値_0", ""),
+                "productName": getvalue(record, "product_name", ""),
+                "maker": getvalue(record, "maker", ""),
+                "model": getvalue(record, "model", ""),
+                "serial": getvalue(record, "serial", ""),
+                "accessoryStatus": getvalue(
+                    record,
+                    "accessory_status",
+                    "",
+                ),
+                "accessoryDetails": getvalue(
+                    record,
+                    "accessory_details",
+                    "",
+                ),
+                "store": getvalue(record, "store", config["label"]),
+                "availability": getvalue(
+                    record,
+                    "rental_availability",
+                    "",
+                ),
+            }
+        )
+
+    return machines
+
+
+def get_demo_master_record(store, demo_no):
+    store_key, config = get_demo_store_config(store)
+    safe_demo_no = escape_kintone_query_value(demo_no)
+    query = f'数値_0 = "{safe_demo_no}" limit 1'
+
+    response = requests.get(
+        KINTONE_RECORDS_URL,
+        headers={
+            "X-Cybozu-API-Token": config["master_token"]
+        },
+        params={
+            "app": config["master_app_id"],
+            "query": query,
+        },
+        timeout=20,
+    )
+    print(
+        "デモ機マスター確認:",
+        store_key,
+        response.status_code,
+        response.text,
+    )
+
+    if not response.ok:
+        return None
+
+    records = response.json().get("records", [])
+    return records[0] if records else None
+
+
+def update_demo_master_availability(
+    store,
+    master_record_id,
+    status,
+    revision=None,
+):
+    store_key, config = get_demo_store_config(store)
+    payload = {
+        "app": config["master_app_id"],
+        "id": master_record_id,
+        "record": {
+            "rental_availability": make_field(status),
+        },
+    }
+
+    if revision not in [None, ""]:
+        payload["revision"] = revision
+
+    response = requests.put(
+        KINTONE_RECORD_URL,
+        headers=demo_headers(config["master_token"]),
+        data=json.dumps(
+            payload,
+            ensure_ascii=False,
+        ).encode("utf-8"),
+        timeout=20,
+    )
+    print(
+        "デモ機貸出可否更新:",
+        store_key,
+        status,
+        response.status_code,
+        response.text,
+    )
+    return response
+
+
+def build_demo_rental_record(data, config, master_record):
+    demo_no = getvalue(master_record, "数値_0", "")
+    product_name = getvalue(master_record, "product_name", "")
+    maker = getvalue(master_record, "maker", "")
+    model = getvalue(master_record, "model", "")
+    serial = getvalue(master_record, "serial", "")
+    accessory_status = getvalue(
+        master_record,
+        "accessory_status",
+        "",
+    )
+    line_user_id = str(data.get("lineuserid", "")).strip()
+
+    record = {
+        config["rental_demo_field"]: {
+            "value": demo_no,
+            "lookup": True,
+        },
+        "ルックアップ_0": {
+            "value": line_user_id,
+            "lookup": True,
+        },
+        "rental_scheduled_date": make_field(
+            data.get("rentalScheduledDate", "")
+        ),
+        "shukakiboubi": make_field(data.get("returnScheduledDate", "")),
+        "ドロップダウン": make_field(DEMO_RESERVATION_STATUS),
+        "kiyakuagree": make_field("同意済み"),
+        "remarks": make_field(data.get("remarks", "")),
+    }
+
+    # 岡山版では付属品がルックアップのコピー対象外です。
+    # 広島版では店舗がルックアップのコピー対象外です。
+    # コピー対象の項目を直接送るとKintone側で競合するため、
+    # コピー対象外の項目だけを明示的に登録します。
+    if config["rental_app_id"] == OKAYAMA_DEMO_RENTAL_APP_ID:
+        record["文字列__1行__1"] = make_field(accessory_status)
+    else:
+        record["文字列__1行__5"] = make_field(config["label"])
+
+    return record
+
+
+def add_demo_rental_record(store, data, master_record):
+    store_key, config = get_demo_store_config(store)
+    record = build_demo_rental_record(data, config, master_record)
+    tokens = [
+        config["rental_token"],
+        config["master_token"],
+        CUSTOMER_KINTONE_API_TOKEN,
+    ]
+
+    response = post_json(
+        KINTONE_RECORD_URL,
+        {
+            "app": config["rental_app_id"],
+            "record": record,
+        },
+        demo_headers(*tokens),
+    )
+    print(
+        "デモ機予約登録:",
+        store_key,
+        response.status_code,
+        response.text,
+    )
+    return response
+
+
+def validate_demo_rental_request(data):
+    required_values = {
+        "店舗": data.get("store"),
+        "デモ機": data.get("demoNo"),
+        "お名前": data.get("name"),
+        "電話番号": data.get("phone"),
+        "LINEユーザーID": data.get("lineuserid"),
+        "貸出予定日": data.get("rentalScheduledDate"),
+        "返却予定日": data.get("returnScheduledDate"),
+    }
+
+    for label, value in required_values.items():
+        if not str(value or "").strip():
+            raise ValueError(f"{label}を入力してください。")
+
+    if data.get("kiyakuagree") != "同意済み":
+        raise ValueError("利用規約への同意が必要です。")
+
+    rental_date = datetime.strptime(
+        data["rentalScheduledDate"],
+        "%Y-%m-%d",
+    ).date()
+    return_date = datetime.strptime(
+        data["returnScheduledDate"],
+        "%Y-%m-%d",
+    ).date()
+
+    if return_date < rental_date:
+        raise ValueError(
+            "返却予定日は貸出予定日以降の日付を選択してください。"
+        )
+
+
+@app.route("/demo-form")
+def demo_form():
+    return render_template("demo_form.html")
+
+
+@app.route("/api/demo-machines", methods=["GET"])
+def api_demo_machines():
+    try:
+        store = request.args.get("store", "")
+        machines = get_available_demo_machines(store)
+        return (
+            json.dumps(
+                {
+                    "ok": True,
+                    "machines": machines,
+                },
+                ensure_ascii=False,
+            ),
+            200,
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
+    except ValueError as error:
+        return (
+            json.dumps(
+                {
+                    "ok": False,
+                    "message": str(error),
+                },
+                ensure_ascii=False,
+            ),
+            400,
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
+    except Exception as error:
+        print("デモ機一覧取得エラー:", repr(error))
+        return (
+            json.dumps(
+                {
+                    "ok": False,
+                    "message": "デモ機一覧を取得できませんでした。",
+                },
+                ensure_ascii=False,
+            ),
+            500,
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
+
+
+@app.route("/demo-submit", methods=["POST"])
+def demo_submit():
+    data = request.get_json(force=True) or {}
+    master_record = None
+    store_key = None
+    master_record_id = None
+
+    try:
+        validate_demo_rental_request(data)
+        store_key, config = get_demo_store_config(data.get("store"))
+        demo_no = str(data.get("demoNo", "")).strip()
+        master_record = get_demo_master_record(store_key, demo_no)
+
+        if not master_record:
+            return (
+                json.dumps(
+                    {
+                        "ok": False,
+                        "message": "選択したデモ機が見つかりません。",
+                    },
+                    ensure_ascii=False,
+                ),
+                404,
+                {"Content-Type": "application/json; charset=utf-8"},
+            )
+
+        availability = getvalue(
+            master_record,
+            "rental_availability",
+            "",
+        )
+
+        if availability != DEMO_AVAILABLE_STATUS:
+            return (
+                json.dumps(
+                    {
+                        "ok": False,
+                        "message": (
+                            "このデモ機は、ほかの予約が入ったため"
+                            "現在貸し出しできません。別のデモ機を選択してください。"
+                        ),
+                    },
+                    ensure_ascii=False,
+                ),
+                409,
+                {"Content-Type": "application/json; charset=utf-8"},
+            )
+
+        master_record_id = getvalue(master_record, "$id", "")
+        revision = getvalue(master_record, "$revision", "")
+        reserve_response = update_demo_master_availability(
+            store_key,
+            master_record_id,
+            DEMO_UNAVAILABLE_STATUS,
+            revision,
+        )
+
+        if not reserve_response.ok:
+            if reserve_response.status_code == 409:
+                message = (
+                    "このデモ機は、ほかの予約が入ったため"
+                    "現在貸し出しできません。別のデモ機を選択してください。"
+                )
+            else:
+                message = "デモ機の予約状態を更新できませんでした。"
+
+            return (
+                json.dumps(
+                    {
+                        "ok": False,
+                        "message": message,
+                    },
+                    ensure_ascii=False,
+                ),
+                409 if reserve_response.status_code == 409 else 500,
+                {"Content-Type": "application/json; charset=utf-8"},
+            )
+
+        upsert_customer_record(
+            str(data.get("lineuserid", "")).strip(),
+            str(data.get("name", "")).strip(),
+            str(data.get("phone", "")).strip(),
+        )
+
+        rental_response = add_demo_rental_record(
+            store_key,
+            data,
+            master_record,
+        )
+
+        if not rental_response.ok:
+            update_demo_master_availability(
+                store_key,
+                master_record_id,
+                DEMO_AVAILABLE_STATUS,
+            )
+            return (
+                json.dumps(
+                    {
+                        "ok": False,
+                        "message": (
+                            "貸出予約を登録できませんでした。"
+                            "デモ機の貸出状態は元に戻しました。"
+                        ),
+                    },
+                    ensure_ascii=False,
+                ),
+                500,
+                {"Content-Type": "application/json; charset=utf-8"},
+            )
+
+        rental_record_id = rental_response.json().get("id", "")
+        product_name = getvalue(master_record, "product_name", "")
+        line_user_id = str(data.get("lineuserid", "")).strip()
+        store_label = config["label"]
+        confirmation_text = (
+            "デモ機の貸出予約を受け付けました。\n"
+            f"受付番号：{rental_record_id}\n"
+            f"店舗：{store_label}\n"
+            f"デモ機No：{data.get('demoNo', '')}\n"
+            f"商品名：{product_name}\n"
+            f"貸出予定日：{data.get('rentalScheduledDate', '')}\n"
+            f"返却予定日：{data.get('returnScheduledDate', '')}"
+        )
+        line_response = send_line_push_messages(
+            line_user_id,
+            [
+                {
+                    "type": "text",
+                    "text": confirmation_text,
+                }
+            ],
+        )
+
+        if not line_response.ok:
+            print(
+                "デモ機予約後のLINE通知失敗:",
+                rental_record_id,
+                line_response.text,
+            )
+
+        return (
+            json.dumps(
+                {
+                    "ok": True,
+                    "recordId": rental_record_id,
+                    "store": store_key,
+                    "productName": product_name,
+                },
+                ensure_ascii=False,
+            ),
+            200,
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
+    except ValueError as error:
+        return (
+            json.dumps(
+                {
+                    "ok": False,
+                    "message": str(error),
+                },
+                ensure_ascii=False,
+            ),
+            400,
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
+    except Exception as error:
+        print("デモ機予約処理エラー:", repr(error))
+
+        if store_key and master_record_id:
+            try:
+                update_demo_master_availability(
+                    store_key,
+                    master_record_id,
+                    DEMO_AVAILABLE_STATUS,
+                )
+            except Exception as rollback_error:
+                print("デモ機貸出状態の復元エラー:", repr(rollback_error))
+
+        return (
+            json.dumps(
+                {
+                    "ok": False,
+                    "message": "デモ機の貸出予約中にエラーが発生しました。",
+                },
+                ensure_ascii=False,
+            ),
+            500,
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
 
 
 if __name__ == "__main__":
