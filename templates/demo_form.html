@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>デモ機貸出予約フォーム</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        :root {
+            --main: #06c755;
+            --main-dark: #04a846;
+            --bg: #f3f6f4;
+            --card: #ffffff;
+            --text: #222222;
+            --muted: #666666;
+            --border: #dddddd;
+            --danger: #e53935;
+            --soft: #effdf4;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        .header {
+            padding: 24px 18px 34px;
+            color: #ffffff;
+            text-align: center;
+            background: linear-gradient(135deg, #06c755, #03a64a);
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .header p {
+            margin: 8px 0 0;
+            font-size: 14px;
+        }
+
+        .container {
+            max-width: 760px;
+            margin: -22px auto 40px;
+            padding: 0 14px;
+        }
+
+        .card {
+            padding: 18px;
+            margin-bottom: 14px;
+            background: var(--card);
+            border-radius: 16px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+        }
+
+        .section-title {
+            margin: 0 0 16px;
+            padding-left: 10px;
+            font-size: 18px;
+            border-left: 5px solid var(--main);
+        }
+
+        label {
+            display: block;
+            margin: 14px 0 6px;
+            font-weight: 600;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+
+        textarea {
+            min-height: 90px;
+            resize: vertical;
+        }
+
+        .required {
+            display: inline-block;
+            padding: 2px 7px;
+            margin-left: 6px;
+            color: #ffffff;
+            font-size: 11px;
+            background: var(--danger);
+            border-radius: 999px;
+        }
+
+        .optional {
+            display: inline-block;
+            padding: 2px 7px;
+            margin-left: 6px;
+            color: #ffffff;
+            font-size: 11px;
+            background: #999999;
+            border-radius: 999px;
+        }
+
+        .hint {
+            margin: 6px 0 0;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .machine-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .machine-card {
+            display: block;
+            padding: 14px;
+            margin: 0;
+            cursor: pointer;
+            border: 2px solid var(--border);
+            border-radius: 14px;
+        }
+
+        .machine-card.active {
+            background: var(--soft);
+            border-color: var(--main);
+            box-shadow: 0 0 0 3px rgba(6, 199, 85, 0.12);
+        }
+
+        .machine-card input {
+            width: auto;
+            margin-right: 8px;
+        }
+
+        .machine-title {
+            font-size: 17px;
+            font-weight: 700;
+        }
+
+        .machine-details {
+            margin: 8px 0 0 28px;
+            color: #555555;
+            font-size: 13px;
+            line-height: 1.65;
+        }
+
+        .terms-box {
+            max-height: 150px;
+            padding: 12px;
+            overflow-y: auto;
+            color: #555555;
+            font-size: 13px;
+            line-height: 1.7;
+            background: #fafafa;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+
+        .terms-check {
+            display: flex;
+            gap: 9px;
+            align-items: flex-start;
+        }
+
+        .terms-check input {
+            width: auto;
+            margin-top: 4px;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            color: #ffffff;
+            font-size: 17px;
+            font-weight: 700;
+            cursor: pointer;
+            background: var(--main);
+            border: none;
+            border-radius: 12px;
+        }
+
+        button:hover:not(:disabled) {
+            background: var(--main-dark);
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            background: #aaaaaa;
+        }
+
+        #liffStatus,
+        #machineStatus {
+            margin-bottom: 12px;
+            color: #555555;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .success-box,
+        .error-box,
+        .notice-box {
+            padding: 16px;
+            margin-top: 14px;
+            line-height: 1.65;
+            border-radius: 14px;
+        }
+
+        .success-box {
+            color: #116530;
+            background: #effdf4;
+            border: 1px solid #9be7b6;
+        }
+
+        .error-box {
+            color: #b00020;
+            background: #fff2f2;
+            border: 1px solid #ffb7b7;
+        }
+
+        .notice-box {
+            color: #5d4b00;
+            background: #fffbea;
+            border: 1px solid #ecd987;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>デモ機貸出予約フォーム</h1>
+        <p>貸出可能なデモ機からご希望の機種をお選びください</p>
+    </div>
+
+    <div class="container">
+        <div id="liffStatus">LINE連携を確認中です...</div>
+
+        <form id="demoRentalForm">
+            <div class="card">
+                <h2 class="section-title">1. 受付店舗</h2>
+                <label for="store">
+                    店舗 <span class="required">必須</span>
+                </label>
+                <select id="store" name="store" required>
+                    <option value="">選択してください</option>
+                    <option value="okayama">岡山</option>
+                    <option value="hiroshima">広島</option>
+                </select>
+                <p class="hint">
+                    店舗を選ぶと、現在貸出可能なデモ機が表示されます。
+                </p>
+            </div>
+
+            <div class="card">
+                <h2 class="section-title">2. デモ機選択</h2>
+                <div id="machineStatus">
+                    先に受付店舗を選択してください。
+                </div>
+                <div id="machineList" class="machine-list"></div>
+            </div>
+
+            <div class="card">
+                <h2 class="section-title">3. お客様情報</h2>
+                <label for="name">
+                    お名前 <span class="required">必須</span>
+                </label>
+                <input
+                    type="text"
+                    id="name"
+                    name="name"
+                    placeholder="例：山田 太郎"
+                    required
+                >
+
+                <label for="phone">
+                    電話番号 <span class="required">必須</span>
+                </label>
+                <input
+                    type="tel"
+                    id="phone"
+                    name="phone"
+                    placeholder="例：09012345678"
+                    required
+                >
+
+                <label for="company">
+                    会社名 <span class="optional">任意</span>
+                </label>
+                <input
+                    type="text"
+                    id="company"
+                    name="company"
+                    placeholder="会社名がある場合は入力してください"
+                >
+            </div>
+
+            <div class="card">
+                <h2 class="section-title">4. 貸出期間</h2>
+                <label for="rentalScheduledDate">
+                    貸出予定日 <span class="required">必須</span>
+                </label>
+                <input
+                    type="date"
+                    id="rentalScheduledDate"
+                    name="rentalScheduledDate"
+                    required
+                >
+
+                <label for="returnScheduledDate">
+                    返却予定日 <span class="required">必須</span>
+                </label>
+                <input
+                    type="date"
+                    id="returnScheduledDate"
+                    name="returnScheduledDate"
+                    required
+                >
+
+                <label for="remarks">
+                    備考 <span class="optional">任意</span>
+                </label>
+                <textarea
+                    id="remarks"
+                    name="remarks"
+                    placeholder="貸出に関する連絡事項があれば入力してください"
+                ></textarea>
+            </div>
+
+            <div class="card">
+                <h2 class="section-title">5. 利用規約</h2>
+                <div class="terms-box">
+                    デモ機は、確認した付属品とともに返却予定日までにご返却ください。<br>
+                    貸出中の紛失、破損、付属品不足などが確認された場合は、内容に応じて費用をご負担いただく場合があります。<br>
+                    貸出期間や返却方法の変更が必要な場合は、事前に店舗へご連絡ください。
+                </div>
+
+                <label class="terms-check">
+                    <input
+                        type="checkbox"
+                        id="kiyakuagree"
+                        name="kiyakuagree"
+                    >
+                    <span>
+                        利用規約に同意します
+                        <span class="required">必須</span>
+                    </span>
+                </label>
+            </div>
+
+            <div class="card">
+                <button type="submit" id="submitBtn" disabled>
+                    デモ機貸出を予約する
+                </button>
+                <div id="message"></div>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        "use strict";
+
+        const liffId = "2009322369-Om7WRQAU";
+        let lineUserId = "";
+        let isSubmitting = false;
+        let selectedDemoNo = "";
+
+        const storeSelect = document.getElementById("store");
+        const machineStatus = document.getElementById("machineStatus");
+        const machineList = document.getElementById("machineList");
+        const submitButton = document.getElementById("submitBtn");
+        const messageBox = document.getElementById("message");
+        const rentalDateInput = document.getElementById(
+            "rentalScheduledDate"
+        );
+        const returnDateInput = document.getElementById(
+            "returnScheduledDate"
+        );
+
+        window.addEventListener("load", initializeLiff);
+        storeSelect.addEventListener("change", loadDemoMachines);
+        rentalDateInput.addEventListener("change", updateReturnDateMinimum);
+        document
+            .getElementById("demoRentalForm")
+            .addEventListener("submit", submitDemoRental);
+
+        function todayString() {
+            const now = new Date();
+            const localDate = new Date(
+                now.getTime() - now.getTimezoneOffset() * 60000
+            );
+            return localDate.toISOString().slice(0, 10);
+        }
+
+        rentalDateInput.min = todayString();
+        returnDateInput.min = todayString();
+
+        async function initializeLiff() {
+            const liffStatus = document.getElementById("liffStatus");
+
+            try {
+                await liff.init({
+                    liffId: liffId,
+                    withLoginOnExternalBrowser: true
+                });
+
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                    return;
+                }
+
+                const profile = await liff.getProfile();
+                lineUserId = profile.userId || "";
+
+                if (!lineUserId) {
+                    throw new Error("LINEユーザーIDを取得できませんでした。");
+                }
+
+                liffStatus.textContent = "LINE連携完了";
+                liffStatus.style.color = "green";
+                updateSubmitButtonState();
+            } catch (error) {
+                console.error("LIFF初期化エラー:", error);
+                liffStatus.textContent = "LINE連携に失敗しました。";
+                liffStatus.style.color = "red";
+                submitButton.disabled = true;
+            }
+        }
+
+        function updateReturnDateMinimum() {
+            const rentalDate = rentalDateInput.value;
+            returnDateInput.min = rentalDate || todayString();
+
+            if (
+                rentalDate &&
+                returnDateInput.value &&
+                returnDateInput.value < rentalDate
+            ) {
+                returnDateInput.value = rentalDate;
+            }
+        }
+
+        async function loadDemoMachines() {
+            const store = storeSelect.value;
+            selectedDemoNo = "";
+            machineList.innerHTML = "";
+            messageBox.innerHTML = "";
+            updateSubmitButtonState();
+
+            if (!store) {
+                machineStatus.textContent = "先に受付店舗を選択してください。";
+                return;
+            }
+
+            machineStatus.textContent = "貸出可能なデモ機を読み込み中です...";
+
+            try {
+                const response = await fetch(
+                    "/api/demo-machines?store=" + encodeURIComponent(store)
+                );
+                const result = await response.json();
+
+                if (!response.ok || !result.ok) {
+                    throw new Error(
+                        result.message || "デモ機一覧を取得できませんでした。"
+                    );
+                }
+
+                renderDemoMachines(result.machines || []);
+            } catch (error) {
+                console.error("デモ機一覧取得エラー:", error);
+                machineStatus.textContent = "デモ機一覧を取得できませんでした。";
+                messageBox.innerHTML =
+                    '<div class="error-box">' +
+                    escapeHtml(error.message) +
+                    "</div>";
+            }
+        }
+
+        function renderDemoMachines(machines) {
+            machineList.innerHTML = "";
+
+            if (machines.length === 0) {
+                machineStatus.textContent =
+                    "現在、この店舗で貸出可能なデモ機はありません。";
+                return;
+            }
+
+            machineStatus.textContent =
+                machines.length + "台の貸出可能なデモ機があります。";
+
+            machines.forEach(function (machine) {
+                const card = document.createElement("label");
+                card.className = "machine-card";
+
+                const radio = document.createElement("input");
+                radio.type = "radio";
+                radio.name = "demoMachine";
+                radio.value = String(machine.demoNo || "");
+
+                radio.addEventListener("change", function () {
+                    selectedDemoNo = radio.value;
+                    document
+                        .querySelectorAll(".machine-card")
+                        .forEach(function (item) {
+                            item.classList.remove("active");
+                        });
+                    card.classList.add("active");
+                    updateSubmitButtonState();
+                });
+
+                const title = document.createElement("span");
+                title.className = "machine-title";
+                title.textContent =
+                    "デモ機No " +
+                    machine.demoNo +
+                    "　" +
+                    (machine.productName || "商品名未登録");
+
+                const details = document.createElement("div");
+                details.className = "machine-details";
+                details.textContent = buildMachineDetails(machine);
+
+                card.appendChild(radio);
+                card.appendChild(title);
+                card.appendChild(details);
+                machineList.appendChild(card);
+            });
+        }
+
+        function buildMachineDetails(machine) {
+            const details = [];
+
+            if (machine.maker) {
+                details.push("メーカー：" + machine.maker);
+            }
+
+            if (machine.model) {
+                details.push("型番：" + machine.model);
+            }
+
+            if (machine.serial) {
+                details.push("機番：" + machine.serial);
+            }
+
+            if (machine.accessoryStatus) {
+                details.push("付属品：" + machine.accessoryStatus);
+            }
+
+            if (machine.accessoryDetails) {
+                details.push("付属品詳細：" + machine.accessoryDetails);
+            }
+
+            return details.join(" / ") || "詳細情報はありません。";
+        }
+
+        function updateSubmitButtonState() {
+            submitButton.disabled = !lineUserId || !selectedDemoNo || isSubmitting;
+        }
+
+        async function submitDemoRental(event) {
+            event.preventDefault();
+
+            if (isSubmitting) {
+                return;
+            }
+
+            if (!lineUserId) {
+                alert(
+                    "LINEユーザーIDを取得できていません。" +
+                    "LINEアプリから開き直してください。"
+                );
+                return;
+            }
+
+            if (!selectedDemoNo) {
+                alert("貸出を希望するデモ機を選択してください。");
+                return;
+            }
+
+            if (!document.getElementById("kiyakuagree").checked) {
+                alert("利用規約に同意してください。");
+                return;
+            }
+
+            if (
+                rentalDateInput.value &&
+                returnDateInput.value &&
+                returnDateInput.value < rentalDateInput.value
+            ) {
+                alert("返却予定日は貸出予定日以降を選択してください。");
+                return;
+            }
+
+            const originalButtonText = submitButton.textContent;
+
+            try {
+                isSubmitting = true;
+                submitButton.disabled = true;
+                submitButton.textContent = "送信中...";
+                messageBox.innerHTML = "";
+
+                const payload = {
+                    store: storeSelect.value,
+                    demoNo: selectedDemoNo,
+                    lineuserid: lineUserId,
+                    name: document.getElementById("name").value.trim(),
+                    phone: document.getElementById("phone").value.trim(),
+                    company: document.getElementById("company").value.trim(),
+                    rentalScheduledDate: rentalDateInput.value,
+                    returnScheduledDate: returnDateInput.value,
+                    remarks: document.getElementById("remarks").value.trim(),
+                    kiyakuagree: "同意済み"
+                };
+
+                const response = await fetch("/demo-submit", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (!response.ok || !result.ok) {
+                    throw new Error(
+                        result.message || "貸出予約を登録できませんでした。"
+                    );
+                }
+
+                submitButton.textContent = "予約済み";
+                submitButton.disabled = true;
+                messageBox.innerHTML =
+                    '<div class="success-box">' +
+                    "<strong>✅ デモ機の貸出予約を受け付けました。</strong><br><br>" +
+                    "受付番号：" + escapeHtml(result.recordId) + "<br>" +
+                    "商品名：" + escapeHtml(result.productName) +
+                    "</div>";
+
+                window.scrollTo({
+                    top: document.body.scrollHeight,
+                    behavior: "smooth"
+                });
+            } catch (error) {
+                console.error("デモ機予約エラー:", error);
+                isSubmitting = false;
+                submitButton.textContent = originalButtonText;
+                updateSubmitButtonState();
+                messageBox.innerHTML =
+                    '<div class="error-box">❌ ' +
+                    escapeHtml(error.message) +
+                    "</div>";
+                alert("送信エラー\n\n" + error.message);
+            }
+        }
+
+        function escapeHtml(value) {
+            return String(value == null ? "" : value)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
